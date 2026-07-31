@@ -28,7 +28,12 @@ const HOOK = `#!/bin/sh
 # Refuses any commit containing a private key or a Google service-account blob,
 # whatever the file is called.
 
-if git diff --cached -U0 | grep -qE 'BEGIN [A-Z ]*PRIVATE KEY|"private_key"[[:space:]]*:'; then
+# .env.example is a committed template whose placeholder necessarily looks like
+# a key. Excluding it by name is safer than trying to tell a placeholder from
+# the real thing by pattern — that guess is exactly what this hook exists to
+# avoid making.
+if git diff --cached -U0 -- . ':(exclude).env.example' \
+   | grep -qE 'BEGIN [A-Z ]*PRIVATE KEY|"private_key"[[:space:]]*:'; then
   echo ""
   echo "  BLOCKED: something in this commit contains a private key."
   echo ""
