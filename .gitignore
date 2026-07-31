@@ -1,0 +1,39 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# ---------------------------------------------------------------- secrets
+# Every env file except the committed example.
+.env*
+!.env.example
+
+# Service-account keys. Google names the file it downloads after your project
+# plus a random hash — "finance-tracker-471203-a1b2c3d4e5f6.json" — so no tidy
+# pattern catches it reliably. The rule that actually protects you is to keep
+# the key OUT of this folder entirely: leave it in ~/Downloads, or move it to
+# ~/.config/, and point "npm run setup" at it there. What follows is a
+# backstop, not the plan.
+*service-account*.json
+*credentials*.json
+*client_secret*.json
+*-key.json
+key.json
+gcp*.json
+
+# ---------------------------------------------------------------- your data
+# Exports of your own financial records. The Google Sheet is the source of
+# truth; these are copies, and copies of financial data have a way of turning up
+# somewhere they shouldn't. Delete these two lines if you'd rather version them.
+/transactions.csv
+/budgets.csv
+
+# os
+.DS_Store
+
+# local bundle from the build handoff — safe to delete
+.bundle.zip

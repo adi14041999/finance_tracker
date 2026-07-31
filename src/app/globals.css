@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens.
+ *
+ * Colours come from a validated palette: every categorical pair used here has
+ * been checked for colour-vision-deficiency separation and contrast against the
+ * surface it sits on, in both light and dark mode. Dark is a selected set of
+ * steps for the dark surface, not an automatic inversion of the light one.
+ *
+ * Status colours (good / warning / critical) are reserved and never reused as
+ * a series colour, and never carry meaning alone — every status is paired with
+ * a text label, so it reads the same without colour.
+ */
+
+:root {
+  color-scheme: light;
+
+  --surface-1: #fcfcfb;        /* cards, chart surface */
+  --surface-page: #f9f9f7;     /* page plane behind the cards */
+  --surface-sunken: #f2f1ee;   /* wells, track backgrounds */
+
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+
+  --series-1: #2a78d6;         /* blue */
+  --series-2: #eb6834;         /* orange */
+  --series-3: #1baf7a;         /* aqua */
+  --series-4: #eda100;         /* yellow */
+  --series-5: #e87ba4;         /* magenta */
+  --series-6: #008300;         /* green */
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
+  --delta-good: #006300;       /* success text, darker for legibility */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --surface-1: #1a1a19;
+    --surface-page: #0d0d0d;
+    --surface-sunken: #232322;
+
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.1);
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+
+    --delta-good: #0ca30c;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-1: #1a1a19;
+  --surface-page: #0d0d0d;
+  --surface-sunken: #232322;
+
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.1);
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+
+  --delta-good: #0ca30c;
+}
+
+@theme inline {
+  --color-surface: var(--surface-1);
+  --color-page: var(--surface-page);
+  --color-sunken: var(--surface-sunken);
+  --color-ink: var(--text-primary);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-hairline: var(--border);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --color-series-5: var(--series-5);
+  --color-series-6: var(--series-6);
+  --color-good: var(--status-good);
+  --color-warning: var(--status-warning);
+  --color-critical: var(--status-critical);
+  --color-delta-good: var(--delta-good);
+}
+
+html,
+body {
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Columns of figures must line up; standalone numbers look better proportional. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* Charts get a hairline ring rather than a heavy frame. */
+.chart-surface {
+  background: var(--surface-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
