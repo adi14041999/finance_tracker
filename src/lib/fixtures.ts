@@ -45,21 +45,21 @@ const CATEGORY_ROWS = [
 
 /** category -> [times per month, typical amount, spread, merchant names] */
 const HABITS: Record<string, [number, number, number, string[]]> = {
-  Rent: [1, 2400, 0, ['Monthly rent']],
+  Rent: [1, 1650, 0, ['Monthly rent']],
   Utilities: [2, 85, 40, ['PG&E', 'Comcast', 'Water']],
-  Groceries: [6, 78, 45, ["Trader Joe's", 'Safeway', 'Whole Foods', 'Costco']],
-  Restaurants: [7, 42, 30, ['Tartine', 'Zuni Cafe', 'Sushi Ran', 'Taqueria', 'Blue Bottle']],
+  Groceries: [5, 62, 30, ["Trader Joe's", 'Safeway', 'Whole Foods', 'Costco']],
+  Restaurants: [5, 31, 18, ['Tartine', 'Zuni Cafe', 'Sushi Ran', 'Taqueria', 'Blue Bottle']],
   Car: [2, 120, 80, ['Shell', 'Insurance', 'Parking', 'Oil change']],
   'Uber/Lyft': [5, 24, 14, ['Uber', 'Lyft']],
   'Public transportation': [3, 22, 8, ['BART', 'Clipper top-up', 'Muni']],
-  Flights: [0.4, 420, 180, ['United', 'Alaska', 'Delta']],
-  Hotels: [0.3, 310, 140, ['Marriott', 'Airbnb', 'Kimpton']],
+  Flights: [0.3, 260, 90, ['United', 'Alaska', 'Delta']],
+  Hotels: [0.2, 180, 70, ['Marriott', 'Airbnb', 'Kimpton']],
   Subscriptions: [5, 16, 9, ['Spotify', 'Netflix', 'iCloud', 'NYT', 'Claude']],
-  Compute: [3, 190, 130, ['Lambda Labs', 'RunPod', 'Vast.ai', 'CoreWeave']],
+  Compute: [1, 45, 30, ['Lambda Labs', 'RunPod', 'Vast.ai', 'CoreWeave']],
   Courses: [0.5, 240, 120, ['Coursera', 'O’Reilly', 'Frontend Masters']],
-  'Amazon/Walmart': [5, 58, 45, ['Amazon', 'Walmart', 'Target']],
-  Fitness: [1.2, 95, 35, ['Equinox', 'Climbing gym', 'Yoga studio']],
-  Immigration: [0.25, 640, 300, ['USCIS filing fee', 'Attorney']],
+  'Amazon/Walmart': [4, 39, 25, ['Amazon', 'Walmart', 'Target']],
+  Fitness: [1, 48, 12, ['Equinox', 'Climbing gym', 'Yoga studio']],
+  Immigration: [0.15, 390, 140, ['USCIS filing fee', 'Attorney']],
   Fees: [1.5, 28, 20, ['Wire fee', 'ATM fee', 'FX fee', 'Late fee']],
   Miscellaneous: [2, 45, 35, ['Gift', 'Pharmacy', 'Dry cleaning', 'Haircut']],
 };
@@ -76,20 +76,23 @@ const ACCOUNTS = [
 /**
  * ticker, recover, mean, units, price.
  *
- * Chosen to exercise every branch of the recovery page rather than to look
- * tidy: one name already past break-even, one deep under water, one owing
- * nothing at all, two closed with no position to earn the loss back, and one
- * whose price is blank the way GOOGLEFINANCE leaves it for a bad ticker.
+ * Deliberately nothing like any real ledger this app might be pointed at:
+ * different tickers, a different order of magnitude, and a different shape —
+ * the sample book is mostly recovered rather than mostly outstanding.
+ *
+ * It still exercises every branch: one name past break-even, one under water,
+ * one owing nothing, two closed with no position behind them, and one whose
+ * price is blank the way GOOGLEFINANCE leaves it for a ticker it can't resolve.
  */
 const POSITIONS = [
-  ['NVDA', 19396, 128.75, 200.24, 181.4],
-  ['META', 205096, 350, 500.86, 640.12],
-  ['PLUG', 6000, 1.71, 4000, 1.12],
-  ['VTI', 0, 305.4, 142.5, 337.18],
-  ['SNOW', 10000, 150, 100, 262.5],
-  ['ENPH', 20001, '', '', ''],
-  ['PLTR', 10000, '', '', ''],
-  ['MOGU', 500, '', '', ''],
+  ['AAPL', 4200, 176.4, 60, 214.8],
+  ['DIS', 9750, 118.25, 150, 96.4],
+  ['KO', 0, 61.8, 220, 68.15],
+  ['ORCL', 1800, 132.5, 40, 149.9],
+  ['INTC', 3100, 44.9, 200, 27.35],
+  ['NKE', 2400, '', '', ''],
+  ['SBUX', 660, '', '', ''],
+  ['ZZZZ', 300, '', '', ''],
 ];
 
 /**
@@ -112,10 +115,10 @@ function premiumGrid(months: string[], random: () => number): unknown[][] {
     for (let d = 1; d <= 31; d++) {
       if (d > dim) { cells.push('N/A'); continue; }
       let v = 0;
-      if (random() < 0.55) {
-        v = random() < 0.08
-          ? -Math.round(random() * 90000) / 100
-          : Math.round(random() * 180000) / 100;
+      if (random() < 0.4) {
+        v = random() < 0.07
+          ? -Math.round(random() * 24000) / 100
+          : Math.round(random() * 21000) / 100;
       }
       total += v;
       cells.push(v);
@@ -173,17 +176,22 @@ export function sampleSheet(today: string): RawSheet {
     }
   }
 
-  transactions.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  // Sort the BODY only. Sorting the whole array moves the header row, because
+  // "date" orders after "2026-01-05" — which silently left the sample sheet
+  // with no header and every column reported missing.
+  const [txHeader, ...txBody] = transactions;
+  txBody.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const sortedTransactions = [txHeader, ...txBody];
 
   // Balances: a plausible upward drift with a wobble, debts shrinking.
   const balances: unknown[][] = [['date', 'account_id', 'balance']];
   const start: Record<string, number> = {
-    chk_main: 7800, sav_hys: 21000, brk_rh: 61000,
-    ret_401k: 68000, cc_amex: 2100, loan_car: 14800,
+    chk_main: 3150, sav_hys: 8600, brk_rh: 19400,
+    ret_401k: 27300, cc_amex: 740, loan_car: 5900,
   };
   const drift: Record<string, number> = {
-    chk_main: 180, sav_hys: 900, brk_rh: 2100,
-    ret_401k: 1400, cc_amex: -40, loan_car: -420,
+    chk_main: 60, sav_hys: 310, brk_rh: 540,
+    ret_401k: 420, cc_amex: -15, loan_car: -180,
   };
 
   months.forEach((month, i) => {
@@ -192,7 +200,7 @@ export function sampleSheet(today: string): RawSheet {
     const day = isCurrent ? Math.max(1, Number(today.slice(8, 10))) : dim;
 
     for (const [accountId, base] of Object.entries(start)) {
-      const wobble = (random() - 0.5) * (accountId === 'brk_rh' ? 3400 : 700);
+      const wobble = (random() - 0.5) * (accountId === 'brk_rh' ? 900 : 220);
       const value = Math.max(50, base + drift[accountId] * i + wobble);
       balances.push([
         `${month}-${String(day).padStart(2, '0')}`,
@@ -204,9 +212,9 @@ export function sampleSheet(today: string): RawSheet {
 
   const budgets: unknown[][] = [['month', 'category', 'amount']];
   const targets: Record<string, number> = {
-    Rent: 2400, Utilities: 180, Groceries: 550, Restaurants: 300,
-    Car: 220, 'Uber/Lyft': 120, Subscriptions: 90, Compute: 500,
-    'Amazon/Walmart': 300, Fitness: 120, Flights: 250, Miscellaneous: 120,
+    Rent: 1650, Utilities: 140, Groceries: 340, Restaurants: 190,
+    Car: 160, 'Uber/Lyft': 70, Subscriptions: 60, Compute: 60,
+    'Amazon/Walmart': 170, Fitness: 55, Flights: 90, Miscellaneous: 80,
   };
   for (const month of months.slice(-4)) {
     for (const [category, amount] of Object.entries(targets)) {
@@ -217,7 +225,7 @@ export function sampleSheet(today: string): RawSheet {
   return {
     accounts: [['account_id', 'name', 'class'], ...ACCOUNTS],
     categories: [['category'], ...CATEGORY_ROWS],
-    transactions,
+    transactions: sortedTransactions,
     balances,
     budgets,
     positions: [
@@ -229,15 +237,24 @@ export function sampleSheet(today: string): RawSheet {
     rolls: [
       ['ticker', 'rolled at (MM/DD/YY)', 'rolled from', 'rolled to', 'cost',
         'number of contracts', 'total cost', 'recovered'],
-      ['NVDA', '01/12/26', 130, 190, 6850.08, 2, 13700.16, 1014],
-      ['META', '01/12/26', 490, 690, 16300.08, 4, 65200.32, 6322.56],
-      ['CRWD', '08/04/25', 320, 465, 15150.08, 1, 15150.08, 4300.86],
+      ['AAPL', '03/21/26', 190, 215, 1240.5, 2, 2481, 1655.2],
+      ['ORCL', '03/21/26', 140, 165, 880.25, 1, 880.25, 880.25],
+      ['DIS', '11/15/25', 105, 125, 610.4, 3, 1831.2, 402.6],
+    ],
+    events: [
+      ['Month', 'Total', 'Realized profit & loss YTD'],
+      ['January, 2026', 240, 240],
+      ['February, 2026', -1310, -1070],
+      ['March, 2026', 0, -1070],
+      ['April, 2026', 815, -255],
+      ['May, 2026', -420, -675],
+      ['June, 2026', 1960, 1285],
     ],
     config: [
       ['key', 'value', 'description'],
-      ['monthly_spend_target', 5000, ''],
-      ['annual_spend_target', 60000, ''],
-      ['net_worth_goal', 1000000, ''],
+      ['monthly_spend_target', 3200, ''],
+      ['annual_spend_target', 38400, ''],
+      ['net_worth_goal', 250000, ''],
       ['concentration_warn_pct', 0.25, ''],
     ],
   };

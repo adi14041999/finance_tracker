@@ -1,5 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
+import { cookies } from 'next/headers';
 import { getSheetData, isConfigured, type FetchResult } from './sheets';
 
 /**
@@ -31,6 +32,13 @@ export function today(): string {
 }
 
 async function loadUncached(): Promise<FetchResult> {
+  // Checked BEFORE the memo: sample data must never land in a cache that live
+  // mode then reads back, or the other way round.
+  const store = await cookies();
+  if (store.get('data-mode')?.value === 'sample') {
+    return getSheetData(today(), { forceSample: true });
+  }
+
   const now = Date.now();
   if (memo && now - memo.at < TTL_MS) return memo.result;
 

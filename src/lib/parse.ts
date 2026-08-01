@@ -11,7 +11,7 @@
 
 import type {
   Account, AccountClass, Balance, Budget, Category,
-  Config, Position, PremiumMonth, Problem, Roll, SheetData, Transaction,
+  Config, EventMonth, Position, PremiumMonth, Problem, Roll, SheetData, Transaction,
 } from './types';
 import { toCents } from './money';
 import { monthOf, normaliseDate, normaliseMonth } from './dates';
@@ -28,6 +28,7 @@ export interface RawSheet {
   premiums: RawRows;
   premiums_anoosha: RawRows;
   rolls: RawRows;
+  events: RawRows;
   config: RawRows;
 }
 
@@ -529,6 +530,67 @@ function parseRolls(rows: RawRows, problems: Problem[]): Roll[] {
   return out;
 }
 
+/**
+ * Event contracts: one row per month, with the month's realized total.
+ *
+ * The sheet also keeps a running year-to-date column. It is read only to check
+ * against, never to display — a running total is exactly the kind of column
+ * that keeps a stale value after a month above it is edited.
+ */
+function parseEvents(rows: RawRows, problems: Problem[]): EventMonth[] {
+  if (rows.length === 0) return [];
+  const r = new Reader('events', rows[0]);
+  r.missingColumns(['month', 'total'], problems);
+
+  const out: EventMonth[] = [];
+  const seen = new Map<string, number>();
+
+  for (const { row, n } of body(rows)) {
+    const month = monthLabel(row[0]);
+    if (month === null) continue;
+
+    const first = seen.get(month);
+    if (first !== undefined) {
+      r.problem(n, 'month', `${month} already appears on row ${first}. Only the first is used.`);
+      continue;
+    }
+
+    const totalCents = toCents(r.raw(row, 'total'));
+    if (totalCents === null) {
+      r.problem(n, 'total', `Couldn't read "${r.text(row, 'total')}" as an amount. Row skipped.`);
+      continue;
+    }
+
+    seen.set(month, n);
+    out.push({ month, totalCents, row: n });
+  }
+
+  // The sheet's own running column, checked in one pass. A disagreement means
+  // the running total no longer follows from the months above it.
+  const ytdColumn = 'realized profit & loss ytd';
+  if (r.has(ytdColumn)) {
+    let running = 0;
+    let year = '';
+    for (const { row, n } of body(rows)) {
+      const month = monthLabel(row[0]);
+      if (month === null) continue;
+      const entry = out.find((e) => e.month === month);
+      if (!entry || entry.row !== n) continue;
+      if (month.slice(0, 4) !== year) { year = month.slice(0, 4); running = 0; }
+      running += entry.totalCents;
+      const stated = toCents(r.raw(row, ytdColumn));
+      if (stated !== null && stated !== running) {
+        r.problem(n, 'realized profit & loss ytd', `The running total says ${(stated / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} but the months above add to ${(running / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. The app adds up the months.`, 'warning');
+        break; // one message, not one per row after the first divergence
+      }
+    }
+  }
+
+  out.sort((a, b) => a.month.localeCompare(b.month));
+  problems.push(...r.problems);
+  return out;
+}
+
 function parseConfig(rows: RawRows): Config {
   const map = new Map<string, string>();
   for (const row of rows.slice(1)) {
@@ -570,6 +632,7 @@ export function parseSheet(
   const premiums = parsePremiums(raw.premiums, 'premiums', problems);
   const premiumsAnoosha = parsePremiums(raw.premiums_anoosha, 'premiums_anoosha', problems);
   const rolls = parseRolls(raw.rolls, problems);
+  const events = parseEvents(raw.events, problems);
   const config = parseConfig(raw.config);
 
   transactions.sort((a, b) => b.date.localeCompare(a.date) || b.row - a.row);
@@ -581,7 +644,7 @@ export function parseSheet(
 
   return {
     accounts, categories, transactions, balances, budgets, positions,
-    premiums, premiumsAnoosha, rolls, config,
+    premiums, premiumsAnoosha, rolls, events, config,
     problems, ...meta,
   };
 }

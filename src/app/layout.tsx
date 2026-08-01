@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Nav from '@/components/Nav';
-import SettingsPanel from '@/components/SettingsPanel';
-import { load } from '@/lib/load';
+import DataSource from '@/components/DataSource';
+import { load, isConfigured } from '@/lib/load';
 
 export const metadata: Metadata = {
   title: 'Finance Tracker',
@@ -28,18 +28,7 @@ export default async function RootLayout({
               <span className="text-sm font-semibold tracking-tight">Finance</span>
               <Nav />
             </div>
-            <SettingsPanel
-              source={data.source}
-              fetchedAt={data.fetchedAt}
-              error={error}
-              problems={data.problems}
-              counts={{
-                transactions: data.transactions.length,
-                balances: data.balances.length,
-                accounts: data.accounts.length,
-                budgets: data.budgets.length,
-              }}
-            />
+            <DataSource source={data.source} configured={isConfigured()} />
           </div>
         </header>
 
@@ -47,8 +36,52 @@ export default async function RootLayout({
           <div className="border-b border-hairline bg-warning/10">
             <div className="mx-auto max-w-6xl px-6 py-2 text-sm text-ink-secondary">
               <strong className="text-ink">Sample data.</strong> These numbers are
-              invented so you can see the app working. Connect your sheet in{' '}
-              <em>Data &amp; settings</em>, top right.
+              invented so you can see the app working. Switch to{' '}
+              <strong className="text-ink">Live sheet</strong> at the top right once your
+              credentials are set up.
+            </div>
+          </div>
+        )}
+
+        {/* The only remaining home for parse problems. Rows the app couldn't
+            make sense of are never thrown away silently — without something
+            here, a mistyped category would just quietly vanish from every
+            total. Shown only when there is something to say. */}
+        {data.problems.length > 0 && (
+          <div className="border-b border-hairline bg-warning/10">
+            <details className="mx-auto max-w-6xl px-6 py-2 text-sm">
+              <summary className="cursor-pointer text-ink-secondary">
+                <strong className="text-ink">
+                  {data.problems.length} row{data.problems.length === 1 ? '' : 's'}
+                </strong>{' '}
+                in your sheet couldn&apos;t be read. Everything else still adds up.
+              </summary>
+              <ul className="mt-2 space-y-1 text-xs text-ink-secondary">
+                {data.problems.slice(0, 12).map((p, i) => (
+                  <li key={i}>
+                    <span className="tabular font-medium text-ink">
+                      {p.tab} row {p.row}
+                    </span>
+                    {' · '}
+                    {p.column}
+                    {' — '}
+                    {p.message}
+                  </li>
+                ))}
+                {data.problems.length > 12 && (
+                  <li className="text-ink-muted">
+                    …and {data.problems.length - 12} more.
+                  </li>
+                )}
+              </ul>
+            </details>
+          </div>
+        )}
+
+        {error && (
+          <div className="border-b border-hairline bg-critical/10">
+            <div className="mx-auto max-w-6xl px-6 py-2 text-sm text-ink-secondary">
+              <strong className="text-ink">Couldn&apos;t read your sheet.</strong> {error}
             </div>
           </div>
         )}

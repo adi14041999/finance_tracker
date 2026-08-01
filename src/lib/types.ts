@@ -125,6 +125,23 @@ export interface Roll {
   row: number;
 }
 
+/**
+ * One month of realized profit and loss on event contracts.
+ *
+ * Realized only: these settle to a win or a loss, so there is no open position
+ * and nothing unrealized to mark. A month's figure is final the moment it is
+ * written down, which makes this the simplest ledger in the app and also the
+ * least forgiving — nothing here can be recovered by a price moving.
+ *
+ * The running year-to-date total is recomputed rather than read from the
+ * sheet's own column, and compared against it.
+ */
+export interface EventMonth {
+  month: string; // YYYY-MM
+  totalCents: number;
+  row: number;
+}
+
 export interface Config {
   monthlySpendTargetCents: number | null;
   annualSpendTargetCents: number | null;
@@ -154,6 +171,7 @@ export interface SheetData {
   premiums: PremiumMonth[];
   premiumsAnoosha: PremiumMonth[];
   rolls: Roll[];
+  events: EventMonth[];
   config: Config;
   problems: Problem[];
   fetchedAt: string; // ISO timestamp

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseSheet, type RawSheet } from './parse';
+import { sampleSheet } from './fixtures';
 
 const META = { fetchedAt: '2026-07-31T00:00:00.000Z', source: 'sample' as const };
 
@@ -41,6 +42,9 @@ function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
     rolls: [
       ['ticker', 'rolled at (MM/DD/YY)', 'rolled from', 'rolled to', 'cost',
         'number of contracts', 'total cost', 'recovered'],
+    ],
+    events: [
+      ['Month', 'Total', 'Realized profit & loss YTD'],
     ],
     config: [
       ['key', 'value', 'description'],
@@ -493,5 +497,43 @@ describe('rolls', () => {
       ['CRWD', '01/12/26', 320, 470, 14440.08, 1, 14440.08, 2033.96],
     ]);
     expect(rolls).toHaveLength(2);
+  });
+});
+
+/**
+ * The sample sheet goes through the same parser as the real one, so it should
+ * come out spotless. It did not: `transactions.sort()` was sorting the header
+ * row along with the body, which moved it to the bottom and left every column
+ * "missing" — 279 problems and an empty Expenses page in demo mode, for months,
+ * because nothing ever checked.
+ */
+describe('the sample sheet parses cleanly', () => {
+  it('produces no problems at all', () => {
+    const data = parseSheet(sampleSheet('2026-08-01'), META);
+    expect(data.problems).toEqual([]);
+  });
+
+  it('keeps the header at the top of every tab it sorts', () => {
+    const raw = sampleSheet('2026-08-01');
+    expect(raw.transactions[0]).toEqual(['date', 'description', 'category', 'amount']);
+  });
+
+  it('fills every tab the app reads', () => {
+    const data = parseSheet(sampleSheet('2026-08-01'), META);
+    expect(data.transactions.length).toBeGreaterThan(0);
+    expect(data.balances.length).toBeGreaterThan(0);
+    expect(data.accounts.length).toBeGreaterThan(0);
+    expect(data.positions.length).toBeGreaterThan(0);
+    expect(data.premiums.length).toBeGreaterThan(0);
+    expect(data.premiumsAnoosha.length).toBeGreaterThan(0);
+    expect(data.rolls.length).toBeGreaterThan(0);
+    expect(data.events.length).toBeGreaterThan(0);
+  });
+
+  it('is deterministic, so the demo never shifts under you', () => {
+    const a = parseSheet(sampleSheet('2026-08-01'), META);
+    const b = parseSheet(sampleSheet('2026-08-01'), META);
+    expect(b.transactions.length).toBe(a.transactions.length);
+    expect(b.positions).toEqual(a.positions);
   });
 });

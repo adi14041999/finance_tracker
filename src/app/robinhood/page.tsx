@@ -9,6 +9,7 @@ export default async function RobinhoodPage() {
       premiums={data.premiums}
       premiumsAnoosha={data.premiumsAnoosha}
       rolls={data.rolls}
+      events={data.events}
     />
   );
 }

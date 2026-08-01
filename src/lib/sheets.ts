@@ -20,7 +20,7 @@ import type { SheetData } from './types';
 
 const TABS = [
   'accounts', 'categories', 'transactions',
-  'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'config',
+  'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'events', 'config',
 ] as const;
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -148,7 +148,7 @@ function explain(status: number, body: string): string {
     return 'No sheet with that ID (404). GOOGLE_SHEET_ID should be the part of the URL between /d/ and /edit.';
   }
   if (status === 400 && body.includes('Unable to parse range')) {
-    return 'One of the ten tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, positions, premiums, premiums_anoosha, rolls, config.';
+    return 'One of the eleven tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, positions, premiums, premiums_anoosha, rolls, events, config.';
   }
   if (status === 401) {
     return 'Google rejected the credentials (401). If you pasted the private key by hand, check that the \\n escapes survived intact.';
@@ -156,11 +156,14 @@ function explain(status: number, body: string): string {
   return `Google returned ${status}. ${body.slice(0, 300)}`;
 }
 
-export async function getSheetData(today: string): Promise<FetchResult> {
+export async function getSheetData(
+  today: string,
+  options: { forceSample?: boolean } = {},
+): Promise<FetchResult> {
   const sheetId = process.env.GOOGLE_SHEET_ID;
   const fetchedAt = new Date().toISOString();
 
-  if (!sheetId || !credentialsFromEnv()) {
+  if (options.forceSample || !sheetId || !credentialsFromEnv()) {
     return {
       data: parseSheet(sampleSheet(today), { fetchedAt, source: 'sample' }),
       error: null,

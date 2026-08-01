@@ -26,7 +26,7 @@ if (missing.length || !hasCreds) {
 
 const { GoogleAuth } = await import('google-auth-library');
 
-const TABS = ['accounts', 'categories', 'transactions', 'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'config'];
+const TABS = ['accounts', 'categories', 'transactions', 'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'events', 'config'];
 
 function credentials() {
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) {
