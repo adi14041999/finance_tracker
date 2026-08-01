@@ -6,8 +6,8 @@ never writes back to the sheet.
 
 Three pages:
 
-- **Expenses** — spend against budget by category, share-of-month donut, 12-month trend with 3/6/12-month running averages, searchable ledger
-- **Net Worth** — history, per-account table, progress toward a goal
+- **Expenses** — spend against budget by category, share-of-month donut, trend over YTD / 12 months / 3 or 5 years / all time, with 3, 6 and 12-month running averages, searchable ledger
+- **Net Worth** — cash / investment / debt split, history, per-account table, progress toward a goal
 - **Robinhood Strategy** — a placeholder, to be designed later
 
 ---
@@ -107,9 +107,24 @@ Restart `npm run dev` after editing `.env.local`. Env files are only read at sta
 
 ## Using it day to day
 
-Add expenses to the sheet as they happen. Once a month, add a balance row per
-account. The app picks changes up within a minute; the **Refresh now** button in
-*Data & settings* forces it immediately.
+**Expenses** go in as they happen — several times a day is fine. The app
+re-reads the sheet at most every 15 seconds, so a row you just typed shows up
+almost immediately; **Refresh now** in *Data & settings* skips the wait.
+
+**Balances** go in once a month, on the 21st: one row per account.
+
+To close an account, record a final balance of `0` and stop adding rows for it.
+Don't delete it from `accounts` — older balance rows still refer to it, and
+removing it would rewrite your history.
+
+Balances are grouped by month, so the day you snapshot on doesn't matter to the
+maths — but consistency does. Snapshotting on the 21st one month and the 3rd the
+next makes one interval 40 days and the next 20, and the chart can't tell you
+that. Pick a day and keep it.
+
+Accounts that haven't moved can be skipped; the app carries the last figure
+forward, marks it "carried forward" in the table, and lists it under "Gaps in
+your records" so a stale number never passes for a fresh one.
 
 **Data & settings** (top right) also holds the data-health list: every row the
 app couldn't use, named by tab, row number and column, with what was wrong. If a

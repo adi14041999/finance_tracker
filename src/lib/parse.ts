@@ -111,22 +111,22 @@ function parseAccounts(rows: RawRows, problems: Problem[]): Account[] {
 
     const classText = r.text(row, 'class').toLowerCase();
     let klass: AccountClass;
-    if (classText === 'asset' || classText === 'liability') {
+    if (classText === 'cash' || classText === 'investment' || classText === 'liability') {
       klass = classText;
+    } else if (classText === 'asset') {
+      // An older sheet used asset/liability. Keep it working, but say so —
+      // "asset" can't tell us whether it's spendable or locked away.
+      klass = 'cash';
+      r.problem(n, 'class', 'The "asset" class was split into "cash" and "investment". Treating this as cash — change it if it belongs under investments.', 'warning');
     } else {
       // This one really matters: guessing wrong flips the sign of every balance
       // for this account. Default to asset, but say so loudly rather than
       // quietly turning a mortgage into savings.
-      klass = 'asset';
-      r.problem(n, 'class', `Expected "asset" or "liability" but found "${classText || 'nothing'}". Treating it as an asset — if this is a debt, fix it or your net worth is wrong by twice the balance.`);
+      klass = 'cash';
+      r.problem(n, 'class', `Expected "cash", "investment" or "liability" but found "${classText || 'nothing'}". Treating it as cash — if this is a debt, fix it or your net worth is wrong by twice the balance.`);
     }
 
-    out.push({
-      accountId,
-      name: r.text(row, 'name') || accountId,
-      klass,
-      active: r.bool(row, 'active', true),
-    });
+    out.push({ accountId, name: r.text(row, 'name') || accountId, klass });
   }
 
   problems.push(...r.problems);
@@ -206,7 +206,7 @@ function parseBalances(rows: RawRows, accounts: Account[], problems: Problem[]):
   const r = new Reader('balances', rows[0]);
   r.missingColumns(['date', 'account_id', 'balance'], problems);
 
-  const knownAccounts = new Set(accounts.map((a) => a.accountId));
+  const classOf = new Map(accounts.map((a) => [a.accountId, a.klass]));
   const out: Balance[] = [];
 
   for (const { row, n } of body(rows)) {
@@ -220,7 +220,7 @@ function parseBalances(rows: RawRows, accounts: Account[], problems: Problem[]):
       r.problem(n, 'account_id', 'Blank account_id. Row skipped.');
       continue;
     }
-    if (!knownAccounts.has(accountId)) {
+    if (!classOf.has(accountId)) {
       r.problem(n, 'account_id', `"${accountId}" isn't on the accounts tab, so it can't be counted as an asset or a debt. Row skipped.`);
       continue;
     }
@@ -229,9 +229,12 @@ function parseBalances(rows: RawRows, accounts: Account[], problems: Problem[]):
       r.problem(n, 'balance', `Couldn't read "${r.text(row, 'balance')}" as an amount. Row skipped.`);
       continue;
     }
-    if (balanceCents < 0) {
-      // Not fatal, but it usually means a liability was entered with a minus.
-      r.problem(n, 'balance', 'Negative balance. Liabilities should be entered positive — the app subtracts them for you.', 'warning');
+    // A negative balance means different things by account class. On a credit
+    // card it's a credit balance — you overpaid, and the card owes you — which
+    // is perfectly normal and correctly adds to net worth once negated. On cash
+    // or investments it's odd enough to be worth a look.
+    if (balanceCents < 0 && classOf.get(accountId) !== 'liability') {
+      r.problem(n, 'balance', 'Negative balance on an account that should hold money. If this is a debt, its class on the accounts tab is wrong.', 'warning');
     }
 
     out.push({ date, month: monthOf(date), accountId, balanceCents, row: n });

@@ -5,13 +5,17 @@
  * See money.ts for why, and for the helpers that convert at the boundaries.
  */
 
-export type AccountClass = 'asset' | 'liability';
+/**
+ * Three buckets, one column. Cash and investment are both assets — the split
+ * exists because money you can spend this afternoon and money that is locked
+ * in a 401(k) answer different questions, even though they add up the same.
+ */
+export type AccountClass = 'cash' | 'investment' | 'liability';
 
 export interface Account {
   accountId: string;
   name: string;
   klass: AccountClass;
-  active: boolean;
 }
 
 /** Just the list of valid category names. The sheet's dropdowns read from it,

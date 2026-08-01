@@ -7,11 +7,16 @@ import { getSheetData, isConfigured, type FetchResult } from './sheets';
  *
  * `cache()` dedupes within a single request — three components asking for the
  * data get one fetch. The module-level TTL then keeps navigation between pages
- * from hitting Google every time, while staying fresh enough that an edit in
- * the sheet shows up within a minute or so.
+ * from hitting Google on every click.
+ *
+ * The TTL is deliberately short. Expenses get typed into the sheet throughout
+ * the day and then checked against the page immediately, so a minute of
+ * staleness reads as "the app is broken" rather than "the cache hasn't
+ * expired". Fifteen seconds is well inside Google's read quota for a
+ * single user, and the Refresh button in Settings bypasses it entirely.
  */
 
-const TTL_MS = 60_000;
+const TTL_MS = 15_000;
 
 let memo: { at: number; result: FetchResult } | null = null;
 

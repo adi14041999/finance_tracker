@@ -26,11 +26,11 @@ key.json
 gcp*.json
 
 # ---------------------------------------------------------------- your data
-# Exports of your own financial records. The Google Sheet is the source of
-# truth; these are copies, and copies of financial data have a way of turning up
-# somewhere they shouldn't. Delete these two lines if you'd rather version them.
-/transactions.csv
-/budgets.csv
+# Exports of your own financial records — the CSVs used to seed the sheet, and
+# anything else you drop here. The Google Sheet is the source of truth; these
+# are copies, and copies of financial data have a way of turning up somewhere
+# they shouldn't. Remove this line if you'd rather version them.
+*.csv
 
 # os
 .DS_Store

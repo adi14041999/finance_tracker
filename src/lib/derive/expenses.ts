@@ -203,6 +203,57 @@ export function spendTrend(
   });
 }
 
+export type TrendRange = 'ytd' | '12m' | '3y' | '5y' | 'all';
+
+export const TREND_RANGES: { key: TrendRange; label: string }[] = [
+  { key: 'ytd', label: 'Year to date' },
+  { key: '12m', label: 'Last 12 months' },
+  { key: '3y', label: 'Last 3 years' },
+  { key: '5y', label: 'Last 5 years' },
+  { key: 'all', label: 'All time' },
+];
+
+/**
+ * The months a trend range covers, ending at `month`.
+ *
+ * Clamped to where the data actually starts. Asking for five years when you
+ * have nineteen months of history gives you nineteen months, not sixty — the
+ * other forty-one would be drawn as $0 spend, which reads as "I spent nothing
+ * for three years" rather than "I wasn't tracking yet". A range is a request
+ * for at most this much, never a promise to invent the rest.
+ */
+export function trendRangeMonths(
+  range: TrendRange,
+  month: string,
+  earliest: string | null,
+): string[] {
+  let start: string;
+  if (range === 'ytd') {
+    start = `${month.slice(0, 4)}-01`;
+  } else if (range === 'all') {
+    start = earliest ?? month;
+  } else {
+    const back = range === '12m' ? 11 : range === '3y' ? 35 : 59;
+    start = addMonths(month, -back);
+  }
+
+  if (earliest && start < earliest) start = earliest;
+  if (start > month) start = month;
+
+  const out: string[] = [];
+  for (let m = start; m <= month; m = addMonths(m, 1)) out.push(m);
+  return out;
+}
+
+/** The first month any spending was recorded, or null for an empty sheet. */
+export function earliestMonth(transactions: Transaction[]): string | null {
+  let earliest: string | null = null;
+  for (const t of transactions) {
+    if (earliest === null || t.month < earliest) earliest = t.month;
+  }
+  return earliest;
+}
+
 /** Biggest categories this month, for the summary strip. */
 export function topCategories(summary: MonthSummary, n = 5): CategorySpend[] {
   return [...summary.categories]

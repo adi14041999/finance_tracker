@@ -65,12 +65,12 @@ const HABITS: Record<string, [number, number, number, string[]]> = {
 };
 
 const ACCOUNTS = [
-  ['chk_main', 'Everyday Checking', 'asset', 'TRUE'],
-  ['sav_hys', 'High Yield Savings', 'asset', 'TRUE'],
-  ['brk_rh', 'Robinhood', 'asset', 'TRUE'],
-  ['ret_401k', '401(k)', 'asset', 'TRUE'],
-  ['cc_amex', 'Amex Gold', 'liability', 'TRUE'],
-  ['loan_car', 'Car Loan', 'liability', 'TRUE'],
+  ['chk_main', 'Everyday Checking', 'cash'],
+  ['sav_hys', 'High Yield Savings', 'cash'],
+  ['brk_rh', 'Robinhood', 'investment'],
+  ['ret_401k', '401(k)', 'investment'],
+  ['cc_amex', 'Amex Gold', 'liability'],
+  ['loan_car', 'Car Loan', 'liability'],
 ];
 
 const HOLDINGS = [
@@ -172,7 +172,7 @@ export function sampleSheet(today: string): RawSheet {
   }
 
   return {
-    accounts: [['account_id', 'name', 'class', 'active'], ...ACCOUNTS],
+    accounts: [['account_id', 'name', 'class'], ...ACCOUNTS],
     categories: [['category'], ...CATEGORY_ROWS],
     transactions,
     balances,

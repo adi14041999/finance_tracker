@@ -2,12 +2,51 @@
 
 import { useMemo } from 'react';
 import type { Account, Balance, Config } from '@/lib/types';
-import { netWorthSeries, netWorthSummary, accountTable, gapMonths } from '@/lib/derive/networth';
+import {
+  netWorthSeries, netWorthSummary, accountTable, gapMonths, visibleSeries, LOOKBACKS,
+} from '@/lib/derive/networth';
+import type { Change as ChangeValue } from '@/lib/derive/networth';
 import { formatMoney, formatPercent, pctChange } from '@/lib/money';
 import { formatMonth } from '@/lib/dates';
 import LineChart from './LineChart';
 import StatTile from './StatTile';
-import BarList from './BarList';
+import DonutChart from './DonutChart';
+
+/**
+ * A change in dollars with the percentage beneath it.
+ *
+ * Both, rather than either: "+$70,737" tells you how much moved, "+11.6%" tells
+ * you whether that was a big move for this account. The percentage is omitted
+ * when the previous balance was zero, since $0 -> $64 has no honest percentage
+ * and printing one would be worse than printing nothing.
+ */
+function Change({ change }: { change: ChangeValue }) {
+  const { cents, pct } = change;
+  if (cents == null) {
+    return <td className="tabular py-2 pr-3 text-right text-ink-muted">—</td>;
+  }
+  const good = cents > 0;
+  return (
+    <td className="tabular py-2 pr-3 text-right align-top">
+      <div className={good ? 'text-delta-good' : 'text-ink-secondary'}>
+        {good ? '+' : ''}
+        {formatMoney(cents, { cents: false })}
+      </div>
+      {pct != null && (
+        <div className="text-xs text-ink-muted">
+          {pct > 0 ? '+' : ''}
+          {formatPercent(pct, 1)}
+        </div>
+      )}
+    </td>
+  );
+}
+
+const CLASS_LABEL: Record<string, string> = {
+  cash: 'Cash',
+  investment: 'Investment',
+  liability: 'Debt',
+};
 
 export default function NetWorthView({
   accounts, balances, config,
@@ -16,9 +55,11 @@ export default function NetWorthView({
   balances: Balance[];
   config: Config;
 }) {
-  const series = useMemo(
-    () => netWorthSeries(accounts, balances, { startMonth: config.startMonth }),
-    [accounts, balances, config.startMonth],
+  // Every figure comes from the full history; start_month only trims the chart.
+  const series = useMemo(() => netWorthSeries(accounts, balances), [accounts, balances]);
+  const charted = useMemo(
+    () => visibleSeries(series, config.startMonth),
+    [series, config.startMonth],
   );
   const summary = useMemo(() => netWorthSummary(series, config), [series, config]);
   const rows = useMemo(() => accountTable(series), [series]);
@@ -39,12 +80,27 @@ export default function NetWorthView({
     );
   }
 
-  const months = series.map((p) => p.month);
+  const months = charted.map((p) => p.month);
   const changePct = summary.previous
     ? pctChange(summary.previous.netCents, summary.current.netCents)
     : null;
 
   const accountNames = new Map(accounts.map((a) => [a.accountId, a.name]));
+
+  const assetSlices = summary.current.accounts
+    .filter((a) => a.klass !== 'liability' && a.signedCents > 0)
+    .map((a) => ({ key: a.accountId, label: a.name, valueCents: a.signedCents }));
+
+  // Only balances you actually owe belong in a part-to-whole chart. A card in
+  // credit is money owed TO you — it still counts in net worth, it just isn't a
+  // slice of your debt, and a pie can't render a negative wedge anyway.
+  const debtSlices = summary.current.accounts
+    .filter((a) => a.klass === 'liability' && a.rawCents > 0)
+    .map((a) => ({ key: a.accountId, label: a.name, valueCents: a.rawCents }));
+
+  const credits = summary.current.accounts.filter(
+    (a) => a.klass === 'liability' && a.rawCents < 0,
+  );
 
   return (
     <div className="space-y-8">
@@ -94,13 +150,28 @@ export default function NetWorthView({
         )}
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <StatTile
-          label="Assets"
-          valueCents={summary.current.assetsCents}
+          label="Cash"
+          valueCents={summary.current.cashCents}
           deltaCents={
-            summary.previous ? summary.current.assetsCents - summary.previous.assetsCents : null
+            summary.previous ? summary.current.cashCents - summary.previous.cashCents : null
           }
+          hint={
+            summary.cashShare != null
+              ? `${formatPercent(summary.cashShare)} of assets — money you can spend today`
+              : undefined
+          }
+        />
+        <StatTile
+          label="Investments"
+          valueCents={summary.current.investmentCents}
+          deltaCents={
+            summary.previous
+              ? summary.current.investmentCents - summary.previous.investmentCents
+              : null
+          }
+          hint="Brokerage, retirement, HSA, crypto."
         />
         <StatTile
           label="Debts"
@@ -118,7 +189,8 @@ export default function NetWorthView({
       <section className="card p-5">
         <h2 className="text-base font-semibold">History</h2>
         <p className="mt-0.5 text-xs text-ink-muted">
-          Net worth against total assets — the gap between the two lines is what you owe.
+          Net worth, with cash and investments underneath. The gap between net worth
+          and the two of them combined is what you owe.
         </p>
         <div className="mt-4">
           <LineChart
@@ -128,16 +200,23 @@ export default function NetWorthView({
               {
                 key: 'net',
                 label: 'Net worth',
-                values: series.map((p) => p.netCents),
+                values: charted.map((p) => p.netCents),
                 color: 'var(--series-1)',
                 area: true,
               },
               {
-                key: 'assets',
-                label: 'Assets',
-                values: series.map((p) => p.assetsCents),
+                key: 'investments',
+                label: 'Investments',
+                values: charted.map((p) => p.investmentCents),
                 color: 'var(--series-2)',
-                dash: '4 4',
+                dash: '6 3',
+              },
+              {
+                key: 'cash',
+                label: 'Cash',
+                values: charted.map((p) => p.cashCents),
+                color: 'var(--series-3)',
+                dash: '2 3',
               },
             ]}
           />
@@ -148,40 +227,31 @@ export default function NetWorthView({
         <section className="card p-5">
           <h2 className="text-base font-semibold">Where it sits</h2>
           <p className="mt-0.5 text-xs text-ink-muted">
-            Assets by account, with each one&apos;s share.
+            Share of assets, cash and investments together.
           </p>
           <div className="mt-4">
-            <BarList
-              items={summary.current.accounts
-                .filter((a) => a.klass === 'asset' && a.signedCents > 0)
-                .map((a) => ({
-                  key: a.accountId,
-                  label: a.name,
-                  valueCents: a.signedCents,
-                }))}
+            <DonutChart
+              centreLabel="Assets"
+              slices={assetSlices}
             />
           </div>
         </section>
 
         <section className="card p-5">
           <h2 className="text-base font-semibold">What you owe</h2>
-          <p className="mt-0.5 text-xs text-ink-muted">Debts by account.</p>
+          <p className="mt-0.5 text-xs text-ink-muted">Share of debt, by account.</p>
           <div className="mt-4">
-            {summary.current.accounts.some((a) => a.klass === 'liability') ? (
-              <BarList
-                items={summary.current.accounts
-                  .filter((a) => a.klass === 'liability')
-                  .sort((a, b) => a.signedCents - b.signedCents)
-                  .map((a) => ({
-                    key: a.accountId,
-                    label: a.name,
-                    valueCents: a.rawCents,
-                  }))}
-              />
-            ) : (
-              <p className="py-6 text-center text-sm text-ink-muted">No debts recorded.</p>
-            )}
+            <DonutChart centreLabel="Owed" slices={debtSlices} />
           </div>
+          {credits.length > 0 && (
+            <p className="mt-3 text-xs text-ink-muted">
+              Not shown: {credits.map((c) => c.name).join(', ')}{' '}
+              {credits.length === 1 ? 'is' : 'are'} in credit
+              {' '}({credits.map((c) => formatMoney(-c.rawCents, { cents: false })).join(', ')}).
+              A card that owes you isn&apos;t part of what you owe, but it does count
+              toward net worth above.
+            </p>
+          )}
         </section>
       </div>
 
@@ -192,9 +262,13 @@ export default function NetWorthView({
             <thead>
               <tr className="border-b border-hairline text-left text-xs text-ink-muted">
                 <th className="py-2 pr-3 font-medium">Account</th>
+                <th className="py-2 pr-3 font-medium">Type</th>
                 <th className="py-2 pr-3 text-right font-medium">Balance</th>
-                <th className="py-2 pr-3 text-right font-medium">1 month</th>
-                <th className="py-2 pr-3 text-right font-medium">1 year</th>
+                {LOOKBACKS.map((n) => (
+                  <th key={n} className="py-2 pr-3 text-right font-medium">
+                    {n === 12 ? '1 year' : n === 1 ? '1 month' : `${n} months`}
+                  </th>
+                ))}
                 <th className="py-2 text-right font-medium">Share</th>
               </tr>
             </thead>
@@ -202,10 +276,7 @@ export default function NetWorthView({
               {rows.map((r) => (
                 <tr key={r.accountId} className="border-b border-hairline">
                   <td className="py-2 pr-3">
-                    <span className={r.active ? '' : 'text-ink-muted'}>{r.name}</span>
-                    {!r.active && (
-                      <span className="ml-2 text-xs text-ink-muted">closed</span>
-                    )}
+                    <span>{r.name}</span>
                     {r.carried && (
                       <span
                         className="ml-2 rounded bg-warning/20 px-1.5 py-0.5 text-xs"
@@ -215,25 +286,13 @@ export default function NetWorthView({
                       </span>
                     )}
                   </td>
+                  <td className="py-2 pr-3 text-ink-secondary">{CLASS_LABEL[r.klass]}</td>
                   <td className="tabular py-2 pr-3 text-right font-medium">
                     {formatMoney(r.currentCents, { cents: false })}
                   </td>
-                  <td className="tabular py-2 pr-3 text-right text-ink-secondary">
-                    {r.changeMonthCents == null ? '—' : (
-                      <span className={r.changeMonthCents > 0 ? 'text-delta-good' : ''}>
-                        {r.changeMonthCents > 0 ? '+' : ''}
-                        {formatMoney(r.changeMonthCents, { cents: false })}
-                      </span>
-                    )}
-                  </td>
-                  <td className="tabular py-2 pr-3 text-right text-ink-secondary">
-                    {r.changeYearCents == null ? '—' : (
-                      <span className={r.changeYearCents > 0 ? 'text-delta-good' : ''}>
-                        {r.changeYearCents > 0 ? '+' : ''}
-                        {formatMoney(r.changeYearCents, { cents: false })}
-                      </span>
-                    )}
-                  </td>
+                  {LOOKBACKS.map((n) => (
+                    <Change key={n} change={r.changes[n]} />
+                  ))}
                   <td className="tabular py-2 text-right text-ink-muted">
                     {r.shareOfAssets == null ? '—' : formatPercent(r.shareOfAssets)}
                   </td>

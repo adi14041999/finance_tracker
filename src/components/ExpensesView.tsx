@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import type { Transaction, Category, Budget, Config } from '@/lib/types';
-import { monthSummary, spendTrend, topCategories, TREND_WINDOWS } from '@/lib/derive/expenses';
+import {
+  monthSummary, spendTrend, topCategories, TREND_WINDOWS,
+  TREND_RANGES, trendRangeMonths, earliestMonth, type TrendRange,
+} from '@/lib/derive/expenses';
 import { formatMoney, formatPercent } from '@/lib/money';
-import { addMonths, formatMonth, formatDayMonth } from '@/lib/dates';
+import { formatMonth, formatDayMonth } from '@/lib/dates';
 import BudgetBar from './BudgetBar';
 import DonutChart from './DonutChart';
 import LineChart from './LineChart';
@@ -44,17 +47,18 @@ export default function ExpensesView(props: Props) {
   const [trendCategory, setTrendCategory] = useState('');
   // Which running averages to overlay. All three can be on, or none.
   const [shownAverages, setShownAverages] = useState<number[]>([3]);
+  const [trendRange, setTrendRange] = useState<TrendRange>('12m');
 
   const summary = useMemo(
     () => monthSummary(transactions, categories, budgets, config, month, today),
     [transactions, categories, budgets, config, month, today],
   );
 
-  const trendMonths = useMemo(() => {
-    const out: string[] = [];
-    for (let i = 11; i >= 0; i--) out.push(addMonths(month, -i));
-    return out;
-  }, [month]);
+  const earliest = useMemo(() => earliestMonth(transactions), [transactions]);
+  const trendMonths = useMemo(
+    () => trendRangeMonths(trendRange, month, earliest),
+    [trendRange, month, earliest],
+  );
 
   const trend = useMemo(
     () => spendTrend(transactions, trendMonths, trendCategory || null),
@@ -229,21 +233,36 @@ export default function ExpensesView(props: Props) {
           <div>
             <h2 className="text-base font-semibold">Trend</h2>
             <p className="mt-0.5 text-xs text-ink-muted">
-              Twelve months to {formatMonth(month)}. Overlay running averages to see
-              past the month-to-month noise — the longer the window, the smoother the line.
+              {trendMonths.length} month{trendMonths.length === 1 ? '' : 's'} to{' '}
+              {formatMonth(month)}. Overlay running averages to see past the
+              month-to-month noise — the longer the window, the smoother the line.
             </p>
           </div>
-          <select
-            value={trendCategory}
-            onChange={(e) => setTrendCategory(e.target.value)}
-            className="rounded-lg border border-hairline bg-surface px-3 py-1.5 text-sm"
-            aria-label="Category to chart"
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c.category} value={c.category}>{c.category}</option>
-            ))}
-          </select>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={trendRange}
+              onChange={(e) => setTrendRange(e.target.value as TrendRange)}
+              className="rounded-lg border border-hairline bg-surface px-3 py-1.5 text-sm"
+              aria-label="Time range"
+            >
+              {TREND_RANGES.map((r) => (
+                <option key={r.key} value={r.key}>{r.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={trendCategory}
+              onChange={(e) => setTrendCategory(e.target.value)}
+              className="rounded-lg border border-hairline bg-surface px-3 py-1.5 text-sm"
+              aria-label="Category to chart"
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c.category} value={c.category}>{c.category}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <fieldset className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">

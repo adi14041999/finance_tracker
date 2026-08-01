@@ -6,9 +6,9 @@ const META = { fetchedAt: '2026-07-31T00:00:00.000Z', source: 'sample' as const 
 function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
   return {
     accounts: [
-      ['account_id', 'name', 'class', 'active'],
-      ['chk', 'Checking', 'asset', 'TRUE'],
-      ['amex', 'Amex', 'liability', 'TRUE'],
+      ['account_id', 'name', 'class'],
+      ['chk', 'Checking', 'cash'],
+      ['amex', 'Amex', 'liability'],
     ],
     categories: [
       ['category'],
@@ -124,20 +124,39 @@ describe('problems, not exceptions', () => {
     expect(data.problems[0].message).toContain("isn't on the accounts tab");
   });
 
-  it('warns when a liability looks like it was entered negative', () => {
+  it('accepts a credit balance on a card without complaining', () => {
+    // You overpaid the card; it owes you. Negating it adds to net worth, which
+    // is correct, so there is nothing to warn about.
     const data = parseSheet(sheet({
-      balances: [['date', 'account_id', 'balance'], ['2026-07-31', 'amex', -1204.88]],
+      balances: [['date', 'account_id', 'balance'], ['2026-07-31', 'amex', -827]],
+    }), META);
+    expect(data.balances[0].balanceCents).toBe(-82700);
+    expect(data.problems).toEqual([]);
+  });
+
+  it('warns about a negative balance on an account that holds money', () => {
+    const data = parseSheet(sheet({
+      balances: [['date', 'account_id', 'balance'], ['2026-07-31', 'chk', -1345]],
     }), META);
     expect(data.balances).toHaveLength(1);
     expect(data.problems[0].severity).toBe('warning');
-    expect(data.problems[0].message).toContain('positive');
+    expect(data.problems[0].column).toBe('balance');
+  });
+
+  it('accepts the old asset value but says it needs splitting', () => {
+    const data = parseSheet(sheet({
+      accounts: [['account_id', 'name', 'class'], ['old', 'Legacy', 'asset']],
+    }), META);
+    expect(data.accounts[0].klass).toBe('cash');
+    expect(data.problems[0].severity).toBe('warning');
+    expect(data.problems[0].message).toContain('investment');
   });
 
   it('flags a missing class loudly, since it flips the sign', () => {
     const data = parseSheet(sheet({
       accounts: [['account_id', 'name', 'class'], ['mtg', 'Mortgage', '']],
     }), META);
-    expect(data.accounts[0].klass).toBe('asset');
+    expect(data.accounts[0].klass).toBe('cash');
     expect(data.problems[0].column).toBe('class');
     expect(data.problems[0].severity).toBe('error');
   });
@@ -146,8 +165,8 @@ describe('problems, not exceptions', () => {
     const data = parseSheet(sheet({
       accounts: [
         ['account_id', 'name', 'class'],
-        ['chk', 'First', 'asset'],
-        ['chk', 'Second', 'asset'],
+        ['chk', 'First', 'cash'],
+        ['chk', 'Second', 'cash'],
       ],
     }), META);
     expect(data.accounts).toHaveLength(1);
