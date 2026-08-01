@@ -6,9 +6,9 @@ never writes back to the sheet.
 
 Three pages:
 
-- **Expenses** — spend against budget by category, share-of-month donut, trend over YTD / 12 months / 3 or 5 years / all time, with 3, 6 and 12-month running averages, searchable ledger
+- **Expenses** — spend against budget by category, share-of-month donut, trend over YTD / 12 months / 3 or 5 years / all time, with 3, 6 and 12-month running averages, searchable ledger, and the counting rules written down at the bottom
 - **Net Worth** — cash / investment / debt split, history over YTD / 12 months / 3 or 5 years / all time, per-account table with 1, 3, 6 and 12-month changes
-- **Robinhood Strategy** — a placeholder, to be designed later
+- **Robinhood** — four tabs: **Positions** (realized losses and the unrealized gains working them off), **Premiums** (daily options income, month by month), **Rolls** (what each roll cost and how much has been collected back), **Event contracts** (realized monthly profit and loss)
 
 ---
 
@@ -24,8 +24,8 @@ npm run dev
 Open **http://localhost:3000**.
 
 It works immediately, on built-in sample data — invented numbers, so you can see
-the app functioning before connecting anything. A banner across the top says so.
-Connect your own sheet whenever you're ready.
+the app functioning before connecting anything. The switch at the top right says
+which data you're looking at. Connect your own sheet whenever you're ready.
 
 ---
 
@@ -35,8 +35,15 @@ Three things: the sheet, a robot account that can read it, and two values in a f
 
 ### 1. The sheet
 
-Upload `finance-tracker.xlsx` to Google Drive and open it with Google Sheets.
-Delete the grey sample rows, and follow the README tab inside it.
+Upload `finance-tracker.xlsx` to Google Drive and open it with Google Sheets,
+then delete the grey sample rows.
+
+The app reads eleven tabs, named exactly, lowercase: `accounts`, `categories`,
+`transactions`, `balances`, `budgets`, `positions`, `premiums`,
+`premiums_anoosha`, `rolls`, `events`, `config`. A tab you don't use can be left
+empty or left out entirely — the app checks which tabs exist before reading, and
+names any that are missing rather than failing. `seed-data/` holds a CSV per tab
+showing the expected columns.
 
 From the sheet's URL, copy the long ID:
 
@@ -109,7 +116,7 @@ Restart `npm run dev` after editing `.env.local`. Env files are only read at sta
 
 **Expenses** go in as they happen — several times a day is fine. The app
 re-reads the sheet at most every 15 seconds, so a row you just typed shows up
-almost immediately; **Refresh now** in *Data & settings* skips the wait.
+almost immediately; reload the page if you don't want to wait.
 
 **Balances** go in once a month, on the 21st: one row per account.
 
@@ -126,9 +133,14 @@ Accounts that haven't moved can be skipped; the app carries the last figure
 forward, marks it "carried forward" in the table, and lists it under "Gaps in
 your records" so a stale number never passes for a fresh one.
 
-**Data & settings** (top right) also holds the data-health list: every row the
-app couldn't use, named by tab, row number and column, with what was wrong. If a
-number looks off, look there first.
+**Rows the app couldn't read** appear in an amber strip under the header, named
+by tab, row number and column, with what was wrong. It only shows up when there
+is something to say, so an empty header means a clean sheet.
+
+**Live sheet / Sample** (top right) shows which data you're looking at and
+switches between them. Sample data is invented and shares nothing with your
+sheet — useful for screenshots, or for seeing the app work before connecting
+anything.
 
 ---
 
@@ -158,11 +170,16 @@ UTC midnight, which in a US timezone is the evening of the 13th — enough to fi
 an expense in the wrong month. Strings have no timezone.
 
 **Bad rows never throw.** A typo'd category costs you that row and a line in the
-data-health list. One mistake in a thousand-row sheet shouldn't take down a page.
+problems strip. One mistake in a thousand-row sheet shouldn't take down a page.
 
 **Missing balance months carry forward.** Forgetting to record your mortgage
 shouldn't look like paying it off. Carried figures are labelled in the accounts
 table and listed under "Gaps in your records".
+
+**Running totals in the sheet are recomputed, never read.** The `Total` column on
+`premiums`, `total cost` on `rolls` and the year-to-date column on `events` are
+all recalculated from the cells beneath them and compared against what the sheet
+says. A stale formula gets named instead of quietly reported as fact.
 
 **The charts are hand-drawn SVG**, not a charting library — one less dependency,
 and the geometry is unit-tested rather than trusted.
@@ -194,12 +211,14 @@ npm run typecheck
 **401, or "error:1E08010C"** — the private key got mangled. Re-run
 `npm run setup -- <key.json> <sheet-url> --force` rather than editing it by hand.
 
-**"Unable to parse range"** — a tab is missing or renamed. Exactly these seven,
+**"Unable to parse range"** — a tab is missing or renamed. Exactly these eleven,
 lowercase: `accounts`, `categories`, `transactions`, `balances`, `budgets`,
-`holdings`, `config`.
+`positions`, `premiums`, `premiums_anoosha`, `rolls`, `events`, `config`.
 
 **Still showing sample data** — either `.env.local` is incomplete, or the dev
 server was started before you saved it. Restart it.
 
-**Prices are blank on holdings** — `GOOGLEFINANCE` only works inside Google
-Sheets, not in the uploaded `.xlsx`. Add the formulas after importing.
+**Prices are blank on Positions** — `GOOGLEFINANCE` only works inside Google
+Sheets, not in the uploaded `.xlsx`. Add the formulas after importing. A ticker
+Google can't resolve also comes back blank; the app shows the row without a gain
+rather than guessing at one.

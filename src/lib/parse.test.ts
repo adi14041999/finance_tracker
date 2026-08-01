@@ -149,13 +149,15 @@ describe('problems, not exceptions', () => {
     expect(data.problems).toEqual([]);
   });
 
-  it('warns about a negative balance on an account that holds money', () => {
+  it('accepts a negative balance on a cash account without complaining', () => {
+    // A settle-up account like Splitwise or Venmo genuinely goes both ways.
+    // Flagging it fired a warning on a correct row every single load, which is
+    // how you train someone to stop reading the problems list.
     const data = parseSheet(sheet({
       balances: [['date', 'account_id', 'balance'], ['2026-07-31', 'chk', -1345]],
     }), META);
-    expect(data.balances).toHaveLength(1);
-    expect(data.problems[0].severity).toBe('warning');
-    expect(data.problems[0].column).toBe('balance');
+    expect(data.balances[0].balanceCents).toBe(-134500);
+    expect(data.problems).toEqual([]);
   });
 
   it('accepts the old asset value but says it needs splitting', () => {

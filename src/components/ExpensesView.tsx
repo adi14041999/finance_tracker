@@ -390,6 +390,44 @@ export default function ExpensesView(props: Props) {
           </table>
         </div>
       </section>
+
+      {/* The conventions behind the numbers. Written down because a total is
+          only meaningful if you know what was counted — and six months from
+          now the rules will not be obvious from the figures alone. */}
+      <section className="card p-5">
+        <h2 className="text-base font-semibold">Notes</h2>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          How these figures are counted, so a total always means the same thing.
+        </p>
+        <dl className="mt-4 space-y-4 text-sm">
+          <div>
+            <dt className="font-medium">Large expenses are spread, not lumped</dt>
+            <dd className="mt-0.5 max-w-3xl text-ink-secondary">
+              Anything <strong>$3,000 or over</strong> is divided across the months it
+              actually covers rather than landing entirely in the month it was paid — so a
+              year of insurance doesn&apos;t make one month look catastrophic and the
+              other eleven look cheap. <strong>Flights are the exception</strong>: they
+              stay whole, in the month booked.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium">Work reimbursements aren&apos;t netted off</dt>
+            <dd className="mt-0.5 max-w-3xl text-ink-secondary">
+              If the office pays something back, the expense still appears at full cost.
+              This page tracks what was spent, not what it ended up costing after someone
+              else chipped in.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium">Tax is out of scope</dt>
+            <dd className="mt-0.5 max-w-3xl text-ink-secondary">
+              Refunds are not subtracted and amounts owed are not added — neither is
+              spending. The one exception is <strong>interest on tax</strong>, which is a
+              real cost and is recorded like any other expense.
+            </dd>
+          </div>
+        </dl>
+      </section>
     </div>
   );
 }

@@ -233,13 +233,18 @@ function parseBalances(rows: RawRows, accounts: Account[], problems: Problem[]):
       r.problem(n, 'balance', `Couldn't read "${r.text(row, 'balance')}" as an amount. Row skipped.`);
       continue;
     }
-    // A negative balance means different things by account class. On a credit
-    // card it's a credit balance — you overpaid, and the card owes you — which
-    // is perfectly normal and correctly adds to net worth once negated. On cash
-    // or investments it's odd enough to be worth a look.
-    if (balanceCents < 0 && classOf.get(accountId) !== 'liability') {
-      r.problem(n, 'balance', 'Negative balance on an account that should hold money. If this is a debt, its class on the accounts tab is wrong.', 'warning');
-    }
+    // A negative balance is NOT flagged, on any class.
+    //
+    // It used to be, for cash and investment accounts, on the theory that it
+    // meant a debt had been classed as an asset. But an account that settles
+    // between people — Splitwise, Venmo — legitimately swings both ways, and
+    // one perfectly correct row was firing a warning every single load. A
+    // warning that cries wolf on good data teaches you to skim past the
+    // problems list, which costs more than the case it was guarding.
+    //
+    // The misclassification risk is still covered where it actually starts:
+    // parseAccounts raises an ERROR when a class is missing or unrecognised,
+    // which is the moment a mortgage could become savings.
 
     out.push({ date, month: monthOf(date), accountId, balanceCents, row: n });
   }
