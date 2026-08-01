@@ -20,10 +20,24 @@ import type { SheetData } from './types';
 
 const TABS = [
   'accounts', 'categories', 'transactions',
-  'balances', 'budgets', 'positions', 'config',
+  'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'config',
 ] as const;
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+
+/**
+ * How far right to read. Wide enough for the premiums grid, which is the only
+ * tab that is genuinely wide: a Month column, days 1..31, Total, net worth and
+ * percent — 35 columns.
+ *
+ * This was A1:Z5000, and Z is column 26. Every column past it was silently
+ * absent rather than an error, so the premiums tab lost days 26..31 and the net
+ * worth column from every month and simply reported a smaller total. Nothing in
+ * the app could have caught it: the rows parsed cleanly, they were just short.
+ * Requesting more columns than exist costs nothing -- Sheets returns only what
+ * is populated -- so the range is set well past any plausible sheet.
+ */
+const RANGE = 'A1:BZ5000';
 
 export interface FetchResult {
   data: SheetData;
@@ -61,7 +75,7 @@ export function isConfigured(): boolean {
  * Getting this pair wrong is the single most common source of bugs in
  * sheet-backed apps, which is why it's spelled out here rather than defaulted.
  */
-async function fetchRaw(sheetId: string): Promise<RawSheet> {
+async function fetchRaw(sheetId: string): Promise<{ raw: RawSheet; missing: string[] }> {
   const credentials = credentialsFromEnv();
   if (!credentials) throw new Error('No credentials');
 
@@ -70,18 +84,43 @@ async function fetchRaw(sheetId: string): Promise<RawSheet> {
   const token = await client.getAccessToken();
   if (!token.token) throw new Error('Could not obtain an access token');
 
+  const headers = { Authorization: `Bearer ${token.token}` };
+
+  // Which tabs actually exist, before asking for any of them.
+  //
+  // batchGet is all-or-nothing: name one range whose tab is absent and the
+  // whole request 400s, so a single missing tab would take down Expenses, Net
+  // Worth and everything else along with it. One cheap metadata call turns that
+  // into "this one tab is empty and Settings says which", which is a far more
+  // proportionate response to forgetting to add a sheet.
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}?fields=sheets.properties.title`;
+  const metaResponse = await fetch(metaUrl, { headers, cache: 'no-store' });
+  if (!metaResponse.ok) {
+    throw new Error(explain(metaResponse.status, await metaResponse.text()));
+  }
+  const meta = (await metaResponse.json()) as {
+    sheets?: { properties?: { title?: string } }[];
+  };
+  const present = new Set(
+    (meta.sheets ?? []).map((sh) => String(sh.properties?.title ?? '').trim().toLowerCase()),
+  );
+
+  const wanted = TABS.filter((tab) => present.has(tab));
+  const missing = TABS.filter((tab) => !present.has(tab));
+
+  const out = {} as RawSheet;
+  for (const tab of TABS) out[tab] = [];
+  if (wanted.length === 0) return { raw: out, missing };
+
   const params = new URLSearchParams();
-  for (const tab of TABS) params.append('ranges', `${tab}!A1:Z5000`);
+  for (const tab of wanted) params.append('ranges', `${tab}!${RANGE}`);
   params.set('valueRenderOption', 'UNFORMATTED_VALUE');
   params.set('dateTimeRenderOption', 'FORMATTED_STRING');
   params.set('majorDimension', 'ROWS');
 
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(sheetId)}/values:batchGet?${params}`;
 
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token.token}` },
-    cache: 'no-store',
-  });
+  const response = await fetch(url, { headers, cache: 'no-store' });
 
   if (!response.ok) {
     const body = await response.text();
@@ -91,11 +130,10 @@ async function fetchRaw(sheetId: string): Promise<RawSheet> {
   const json = (await response.json()) as { valueRanges?: { values?: RawRows }[] };
   const ranges = json.valueRanges ?? [];
 
-  const out = {} as RawSheet;
-  TABS.forEach((tab, i) => {
+  wanted.forEach((tab, i) => {
     out[tab] = ranges[i]?.values ?? [];
   });
-  return out;
+  return { raw: out, missing };
 }
 
 /** Turns Google's error bodies into something worth reading. */
@@ -110,7 +148,7 @@ function explain(status: number, body: string): string {
     return 'No sheet with that ID (404). GOOGLE_SHEET_ID should be the part of the URL between /d/ and /edit.';
   }
   if (status === 400 && body.includes('Unable to parse range')) {
-    return 'One of the seven tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, positions, config.';
+    return 'One of the ten tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, positions, premiums, premiums_anoosha, rolls, config.';
   }
   if (status === 401) {
     return 'Google rejected the credentials (401). If you pasted the private key by hand, check that the \\n escapes survived intact.';
@@ -130,8 +168,17 @@ export async function getSheetData(today: string): Promise<FetchResult> {
   }
 
   try {
-    const raw = await fetchRaw(sheetId);
-    return { data: parseSheet(raw, { fetchedAt, source: 'sheet' }), error: null };
+    const { raw, missing } = await fetchRaw(sheetId);
+    const data = parseSheet(raw, { fetchedAt, source: 'sheet' });
+    // Named rather than silent: an empty page because a tab is missing looks
+    // exactly like an empty page because you haven't typed anything yet.
+    for (const tab of missing) {
+      data.problems.push({
+        tab, row: 1, column: '—', severity: 'warning',
+        message: `There's no tab called "${tab}" in your sheet, so anything that reads it is empty. Add a tab with that exact name, or ignore this if you don't use it.`,
+      });
+    }
+    return { data, error: null };
   } catch (e) {
     // Show the demo rather than a dead page, and say plainly what went wrong.
     return {

@@ -26,7 +26,7 @@ if (missing.length || !hasCreds) {
 
 const { GoogleAuth } = await import('google-auth-library');
 
-const TABS = ['accounts', 'categories', 'transactions', 'balances', 'budgets', 'positions', 'config'];
+const TABS = ['accounts', 'categories', 'transactions', 'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'config'];
 
 function credentials() {
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) {
@@ -64,8 +64,60 @@ try {
   process.exit(1);
 }
 
+// Ask what tabs exist before asking for their contents. batchGet is
+// all-or-nothing, so without this a single misspelled tab reports only
+// "a tab is missing" -- true, useless, and exactly when you need the name.
+const metaRes = await fetch(
+  `https://sheets.googleapis.com/v4/spreadsheets/${process.env.GOOGLE_SHEET_ID}?fields=sheets.properties.title`,
+  { headers: { Authorization: `Bearer ${token}` } },
+);
+if (!metaRes.ok) {
+  const body = await metaRes.text();
+  console.error(`  Google returned ${metaRes.status} listing the tabs.\n`);
+  if (metaRes.status === 403) {
+    console.error('  Almost always: the sheet has not been shared with the robot account.');
+    console.error(`  Open the sheet, click Share, add ${creds.client_email} as a Viewer.\n`);
+  } else if (metaRes.status === 404) {
+    console.error('  No sheet with that ID. GOOGLE_SHEET_ID is the part of the URL');
+    console.error('  between /d/ and /edit.\n');
+  } else {
+    console.error(`  ${body.slice(0, 400)}\n`);
+  }
+  process.exit(1);
+}
+const { sheets: sheetMeta = [] } = await metaRes.json();
+const present = sheetMeta.map((sh) => (sh.properties?.title ?? '').trim());
+const presentLower = new Set(present.map((t) => t.toLowerCase()));
+const missingTabs = TABS.filter((t) => !presentLower.has(t));
+const extra = present.filter((t) => !TABS.includes(t.toLowerCase()));
+
+if (missingTabs.length) {
+  console.log('  Tabs the app expects but cannot find:\n');
+  for (const t of missingTabs) console.log(`    ${t}`);
+  console.log('\n  Tabs your sheet actually has:\n');
+  for (const t of present) console.log(`    ${t}`);
+  // Near-misses are almost always the real answer: a hyphen for an underscore,
+  // a capital, a trailing space. Say so rather than let them hunt for it.
+  const near = [];
+  for (const m of missingTabs) {
+    const key = m.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    for (const t of extra) {
+      if (t.replace(/[^a-z0-9]/gi, '').toLowerCase() === key) near.push([t, m]);
+    }
+  }
+  if (near.length) {
+    console.log('');
+    for (const [got, want] of near) {
+      console.log(`  "${got}" looks like "${want}" -- rename it to match exactly.`);
+    }
+  }
+  console.log('');
+}
+
+const wanted = TABS.filter((t) => presentLower.has(t));
 const params = new URLSearchParams();
-for (const tab of TABS) params.append('ranges', `${tab}!A1:Z5000`);
+// BZ, not Z: the premiums grid is 33 columns wide and Z is only 26.
+for (const tab of wanted) params.append('ranges', `${tab}!A1:BZ5000`);
 params.set('valueRenderOption', 'UNFORMATTED_VALUE');
 params.set('dateTimeRenderOption', 'FORMATTED_STRING');
 
@@ -96,7 +148,7 @@ const { valueRanges = [] } = await res.json();
 
 console.log('  Connected. Rows found per tab:\n');
 let total = 0;
-TABS.forEach((tab, i) => {
+wanted.forEach((tab, i) => {
   const rows = valueRanges[i]?.values ?? [];
   const dataRows = Math.max(0, rows.length - 1);
   total += dataRows;

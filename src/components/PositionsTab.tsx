@@ -72,30 +72,43 @@ export default function PositionsTab({ positions }: { positions: Position[] }) {
   return (
     <div className="space-y-8">
       <section className="card p-6">
-        <div className="text-sm text-ink-secondary">Still to recover</div>
-        <div className="mt-1 flex flex-wrap items-baseline gap-4">
-          <span className="text-5xl font-semibold tracking-tight">
-            {formatMoney(summary.remainingCents, { cents: false })}
-          </span>
-          <span className="text-sm text-ink-muted">
-            of {formatMoney(summary.totalRecoverCents, { cents: false })} realized losses
-            across {summary.heldCount + summary.closedCount} tickers
-          </span>
+        <div className="text-sm text-ink-secondary">
+          Realized losses across {summary.heldCount + summary.closedCount} tickers
+        </div>
+        {/* Proportional figures, not tabular — equal-width digits read loose at
+            display sizes. Tabular is for columns that line up vertically. */}
+        <div className="mt-1 text-5xl font-semibold tracking-tight">
+          {formatMoney(summary.totalRecoverCents, { cents: false })}
         </div>
 
-        <div className="mt-5">
-          <div className="flex items-baseline justify-between text-xs text-ink-muted">
-            <span>
-              {formatMoney(summary.recoveredCents, { cents: false })} covered if you closed
-              every position today
-            </span>
-            <span className="tabular">{formatPercent(summary.progress, 1)}</span>
-          </div>
-          <div className="mt-1.5 h-2 rounded-full bg-sunken">
+        {/* The bar splits that headline in two, and the two figures sit beneath
+            the ends they describe — so the geometry itself says which number is
+            which, and they always add back to the number above. */}
+        <div className="mt-6">
+          <div className="h-2.5 overflow-hidden rounded-full bg-sunken">
             <div
               className="h-full rounded-full bg-series-1"
               style={{ width: `${Math.min(1, Math.max(0, summary.progress)) * 100}%` }}
             />
+          </div>
+          <div className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2">
+            <div>
+              <span className="tabular text-xl font-semibold text-series-1">
+                {formatMoney(summary.recoveredCents, { cents: false })}
+              </span>
+              <span className="ml-2 tabular text-xs text-ink-muted">
+                {formatPercent(summary.progress, 1)}
+              </span>
+              <div className="mt-0.5 text-xs text-ink-muted">
+                covered if you closed every position today
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="tabular text-xl font-semibold">
+                {formatMoney(summary.remainingCents, { cents: false })}
+              </span>
+              <div className="mt-0.5 text-xs text-ink-muted">still to recover</div>
+            </div>
           </div>
         </div>
       </section>

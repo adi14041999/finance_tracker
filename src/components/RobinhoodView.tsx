@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import type { Position } from '@/lib/types';
+import type { Position, PremiumMonth, Roll } from '@/lib/types';
 import PositionsTab from './PositionsTab';
+import PremiumsTab from './PremiumsTab';
+import RollsTab from './RollsTab';
 
 /**
  * The Robinhood page is a set of tabs rather than one long scroll, because the
@@ -12,11 +14,20 @@ import PositionsTab from './PositionsTab';
  */
 const TABS = [
   { key: 'positions', label: 'Positions' },
+  { key: 'premiums', label: 'Premiums' },
+  { key: 'rolls', label: 'Rolls' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
 
-export default function RobinhoodView({ positions }: { positions: Position[] }) {
+export default function RobinhoodView({
+  positions, premiums, premiumsAnoosha, rolls,
+}: {
+  positions: Position[];
+  premiums: PremiumMonth[];
+  premiumsAnoosha: PremiumMonth[];
+  rolls: Roll[];
+}) {
   const [tab, setTab] = useState<TabKey>('positions');
 
   return (
@@ -50,6 +61,15 @@ export default function RobinhoodView({ positions }: { positions: Position[] }) 
       </div>
 
       {tab === 'positions' && <PositionsTab positions={positions} />}
+      {tab === 'premiums' && (
+        <PremiumsTab
+          people={[
+            { key: 'aditya', label: 'Aditya', tab: 'premiums', premiums },
+            { key: 'anoosha', label: 'Anoosha', tab: 'premiums_anoosha', premiums: premiumsAnoosha },
+          ]}
+        />
+      )}
+      {tab === 'rolls' && <RollsTab rolls={rolls} />}
     </div>
   );
 }

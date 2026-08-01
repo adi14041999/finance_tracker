@@ -93,6 +93,39 @@ const POSITIONS = [
 ];
 
 /**
+ * Premiums in the same wide month-by-day shape the real sheet uses: a row per
+ * month, columns 1..31, and N/A where the month runs short. Mostly small
+ * positive days with the occasional bad one, so the demo exercises the
+ * diverging scale and the drawdown path rather than a tidy upward line.
+ */
+function premiumGrid(months: string[], random: () => number): unknown[][] {
+  const header = ['Month', ...Array.from({ length: 31 }, (_, i) => i + 1), 'Total'];
+  const names = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+    'August', 'September', 'October', 'November', 'December'];
+  const rows: unknown[][] = [header];
+  for (const month of months) {
+    const year = Number(month.slice(0, 4));
+    const m = Number(month.slice(5, 7));
+    const dim = daysInMonth(year, m);
+    const cells: unknown[] = [];
+    let total = 0;
+    for (let d = 1; d <= 31; d++) {
+      if (d > dim) { cells.push('N/A'); continue; }
+      let v = 0;
+      if (random() < 0.55) {
+        v = random() < 0.08
+          ? -Math.round(random() * 90000) / 100
+          : Math.round(random() * 180000) / 100;
+      }
+      total += v;
+      cells.push(v);
+    }
+    rows.push([`${names[m - 1]}, ${year}`, ...cells, Math.round(total * 100) / 100]);
+  }
+  return rows;
+}
+
+/**
  * `today` is passed in so the sample data always ends at the current month —
  * an app whose demo data stops in 2024 looks broken.
  */
@@ -190,6 +223,15 @@ export function sampleSheet(today: string): RawSheet {
     positions: [
       ['ticker', 'recover', 'mean', 'units', 'price'],
       ...POSITIONS,
+    ],
+    premiums: premiumGrid(months, random),
+    premiums_anoosha: premiumGrid(months, random),
+    rolls: [
+      ['ticker', 'rolled at (MM/DD/YY)', 'rolled from', 'rolled to', 'cost',
+        'number of contracts', 'total cost', 'recovered'],
+      ['NVDA', '01/12/26', 130, 190, 6850.08, 2, 13700.16, 1014],
+      ['META', '01/12/26', 490, 690, 16300.08, 4, 65200.32, 6322.56],
+      ['CRWD', '08/04/25', 320, 465, 15150.08, 1, 15150.08, 4300.86],
     ],
     config: [
       ['key', 'value', 'description'],

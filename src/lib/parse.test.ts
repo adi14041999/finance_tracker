@@ -31,6 +31,17 @@ function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
       ['ticker', 'recover', 'mean', 'units', 'price'],
       ['NVDA', 19396, 128.75, 200.24, 181.4],
     ],
+    premiums: [
+      ['Month', ...Array.from({ length: 31 }, (_, i) => i + 1), 'Total'],
+      ['January, 2024', 100, 0, -25, ...Array.from({ length: 28 }, () => 0), 75],
+    ],
+    premiums_anoosha: [
+      ['Month', ...Array.from({ length: 31 }, (_, i) => i + 1), 'Total'],
+    ],
+    rolls: [
+      ['ticker', 'rolled at (MM/DD/YY)', 'rolled from', 'rolled to', 'cost',
+        'number of contracts', 'total cost', 'recovered'],
+    ],
     config: [
       ['key', 'value', 'description'],
       ['monthly_spend_target', 5000, ''],
@@ -281,5 +292,206 @@ describe('positions', () => {
     const { positions, problems } = p([['X', 500, 12, -100]]);
     expect(positions).toEqual([]);
     expect(problems[0].column).toBe('units');
+  });
+});
+
+describe('premiums grid', () => {
+  const HDR = ['Month', ...Array.from({ length: 31 }, (_, i) => i + 1), 'Total'];
+  const g = (rows: unknown[][]) => parseSheet(sheet({ premiums: [HDR, ...rows] }), META);
+  const days = (...v: unknown[]) => [...v, ...Array.from({ length: 31 - v.length }, () => 0)];
+
+  it('reads a month row and recomputes its total', () => {
+    const { premiums, problems } = g([['January, 2024', ...days(100, -25, 5), 80]]);
+    expect(premiums).toHaveLength(1);
+    expect(premiums[0].month).toBe('2024-01');
+    expect(premiums[0].totalCents).toBe(8000);
+    expect(problems).toEqual([]);
+  });
+
+  it('skips a repeated header row between year blocks', () => {
+    // The sheet stacks 2024, 2025 and 2026 with a header in between. Rows are
+    // found by looking like a month, so the headers need no special handling.
+    const { premiums, problems } = g([
+      ['January, 2024', ...days(10), 10],
+      HDR,
+      ['January, 2025', ...days(20), 20],
+    ]);
+    expect(premiums.map((p) => p.month)).toEqual(['2024-01', '2025-01']);
+    expect(problems).toEqual([]);
+  });
+
+  it('ignores the footer average row', () => {
+    const { premiums, problems } = g([
+      ['January, 2024', ...days(10), 10],
+      ['', ...days(), 6769.65, ''],
+    ]);
+    expect(premiums).toHaveLength(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('treats N/A and blank as no entry, not as zero', () => {
+    const { premiums } = g([['February, 2024', ...days(5), 5].map(
+      (v, i) => (i === 30 || i === 31 ? 'N/A' : v),
+    )]);
+    // February 2024 has 29 days; days 30 and 31 are N/A and must not become 0.
+    expect(premiums[0].days.some((d) => d.day > 29)).toBe(false);
+  });
+
+  it('drops a month with no cells filled in at all', () => {
+    // Future months sit in the sheet with a placeholder net worth of 1. Counting
+    // them would put false zeros on the chart and drag the average down.
+    const { premiums, problems } = g([
+      ['January, 2024', ...days(10), 10],
+      ['August, 2026', ...Array.from({ length: 31 }, () => ''), 0],
+    ]);
+    expect(premiums.map((p) => p.month)).toEqual(['2024-01']);
+    expect(problems).toEqual([]);
+  });
+
+  it('warns when the sheet Total disagrees with the day cells', () => {
+    const { premiums, problems } = g([['January, 2024', ...days(100, 50), 999]]);
+    expect(premiums[0].totalCents).toBe(15000); // the day cells win
+    expect(problems[0].severity).toBe('warning');
+    expect(problems[0].column).toBe('total');
+  });
+
+  it('warns about a figure in a day the month does not have', () => {
+    const { premiums, problems } = g([['April, 2024', ...days(10), 10].map(
+      (v, i) => (i === 31 ? 500 : v),
+    )]);
+    expect(premiums[0].days.some((d) => d.day === 31)).toBe(false);
+    expect(problems[0].message).toContain('only has 30 days');
+  });
+
+  it('rejects a duplicate month instead of double-counting it', () => {
+    const { premiums, problems } = g([
+      ['January, 2024', ...days(10), 10],
+      ['January, 2024', ...days(99), 99],
+    ]);
+    expect(premiums).toHaveLength(1);
+    expect(premiums[0].totalCents).toBe(1000);
+    expect(problems[0].message).toContain('already appears');
+  });
+
+  it('accepts short month names', () => {
+    expect(g([['Jan 2024', ...days(10), 10, 305000]])[('premiums' as 'premiums')][0].month).toBe('2024-01');
+  });
+});
+
+describe('two premium sheets', () => {
+  const HDR = ['Month', ...Array.from({ length: 31 }, (_, i) => i + 1), 'Total'];
+  const days = (...v: unknown[]) => [...v, ...Array.from({ length: 31 - v.length }, () => 0)];
+
+  it('keeps each person on their own tab, never merged', () => {
+    const data = parseSheet(sheet({
+      premiums: [HDR, ['January, 2024', ...days(100), 100]],
+      premiums_anoosha: [HDR, ['January, 2024', ...days(25), 25]],
+    }), META);
+    expect(data.premiums[0].totalCents).toBe(10_000);
+    expect(data.premiumsAnoosha[0].totalCents).toBe(2_500);
+  });
+
+  it('names the right tab when one of them has a problem', () => {
+    const data = parseSheet(sheet({
+      premiums_anoosha: [HDR, ['January, 2024', ...days(100), 999]],
+    }), META);
+    expect(data.problems[0].tab).toBe('premiums_anoosha');
+    expect(data.problems[0].column).toBe('total');
+  });
+
+  it('is fine with one person having no sheet at all', () => {
+    const data = parseSheet(sheet({ premiums_anoosha: [] }), META);
+    expect(data.premiumsAnoosha).toEqual([]);
+    expect(data.problems).toEqual([]);
+  });
+
+  it('says nothing about a stray zero past the end of a month', () => {
+    // Anoosha's November 2024 has 31 day columns for a 30-day month, and the
+    // extra cell holds 0 — a formula dragged one column too far. Nothing is
+    // missing from the total, so there is nothing worth telling her about.
+    const data = parseSheet(sheet({
+      premiums_anoosha: [HDR, ['November, 2024', ...days(10), 10]],
+    }), META);
+    expect(data.premiumsAnoosha[0].totalCents).toBe(1_000);
+    expect(data.problems).toEqual([]);
+  });
+
+  it('still flags a real figure past the end of a month', () => {
+    const row = days(10);
+    row[30] = 500; // day 31 of a 30-day month
+    const data = parseSheet(sheet({
+      premiums_anoosha: [HDR, ['November, 2024', ...row, 510]],
+    }), META);
+    expect(data.problems.some((p) => p.message.includes('only has 30 days'))).toBe(true);
+  });
+});
+
+describe('rolls', () => {
+  const HDR = ['ticker', 'rolled at (MM/DD/YY)', 'rolled from', 'rolled to', 'cost',
+    'number of contracts', 'total cost', 'recovered'];
+  const g = (rows: unknown[][]) => parseSheet(sheet({ rolls: [HDR, ...rows] }), META);
+
+  it('reads a roll and multiplies out the cost', () => {
+    const { rolls, problems } = g([['META', '01/12/26', 490, 690, 16300.08, 4, 65200.32, 6322.56]]);
+    expect(rolls).toHaveLength(1);
+    expect(rolls[0].date).toBe('2026-01-12');
+    expect(rolls[0].totalCostCents).toBe(6_520_032);
+    expect(rolls[0].recoveredCents).toBe(632_256);
+    expect(problems).toEqual([]);
+  });
+
+  it('accepts two- and four-digit years in the same column', () => {
+    // The real sheet has both. Guessing one format would drop half the rows.
+    const { rolls, problems } = g([
+      ['CRWD', '08/04/25', 320, 465, 15150.08, 1, 15150.08, 4300.86],
+      ['CRWD', '01/12/2026', 320, 470, 14440.08, 1, 14440.08, 2033.96],
+    ]);
+    expect(rolls.map((r) => r.date).sort()).toEqual(['2025-08-04', '2026-01-12']);
+    expect(problems).toEqual([]);
+  });
+
+  it('skips the percentage rows the sheet puts under each roll', () => {
+    const { rolls, problems } = g([
+      ['CRWD', '08/04/25', 320, 465, 15150.08, 1, 15150.08, 4300.86],
+      ['', '', '', '', '', '', '', '28.39%'],
+    ]);
+    expect(rolls).toHaveLength(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('warns when contracts and the sheet total disagree', () => {
+    const { rolls, problems } = g([['X', '01/12/26', 10, 20, 100, 3, 200, 0]]);
+    expect(rolls[0].totalCostCents).toBe(30_000); // cost x contracts wins
+    expect(problems[0].severity).toBe('warning');
+    expect(problems[0].column).toBe('total cost');
+  });
+
+  it('defaults a missing contract count to one rather than zero', () => {
+    // Zero contracts would silently make the roll free.
+    const { rolls } = g([['X', '01/12/26', 10, 20, 100, '', '', 0]]);
+    expect(rolls[0].contracts).toBe(1);
+    expect(rolls[0].totalCostCents).toBe(10_000);
+  });
+
+  it('flags recovering more than the roll cost', () => {
+    const { rolls, problems } = g([['X', '01/12/26', 10, 20, 100, 1, 100, 150]]);
+    expect(rolls[0].recoveredCents).toBe(15_000);
+    expect(problems[0].column).toBe('recovered');
+    expect(problems[0].severity).toBe('warning');
+  });
+
+  it('skips a row whose date cannot be read', () => {
+    const { rolls, problems } = g([['X', 'sometime', 10, 20, 100, 1, 100, 0]]);
+    expect(rolls).toEqual([]);
+    expect(problems[0].column).toBe('rolled at');
+  });
+
+  it('keeps both rolls when a ticker is rolled twice', () => {
+    // Two rolls on one ticker are separate obligations, not one to merge.
+    const { rolls } = g([
+      ['CRWD', '08/04/25', 320, 465, 15150.08, 1, 15150.08, 4300.86],
+      ['CRWD', '01/12/26', 320, 470, 14440.08, 1, 14440.08, 2033.96],
+    ]);
+    expect(rolls).toHaveLength(2);
   });
 });

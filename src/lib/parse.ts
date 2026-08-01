@@ -11,7 +11,7 @@
 
 import type {
   Account, AccountClass, Balance, Budget, Category,
-  Config, Position, Problem, SheetData, Transaction,
+  Config, Position, PremiumMonth, Problem, Roll, SheetData, Transaction,
 } from './types';
 import { toCents } from './money';
 import { monthOf, normaliseDate, normaliseMonth } from './dates';
@@ -25,6 +25,9 @@ export interface RawSheet {
   balances: RawRows;
   budgets: RawRows;
   positions: RawRows;
+  premiums: RawRows;
+  premiums_anoosha: RawRows;
+  rolls: RawRows;
   config: RawRows;
 }
 
@@ -347,6 +350,185 @@ function parsePositions(rows: RawRows, problems: Problem[]): Position[] {
   return out;
 }
 
+const MONTH_NAMES = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december',
+];
+
+/** "January, 2024" / "Jan 2024" / "January 2024" -> "2024-01". */
+function monthLabel(value: unknown): string | null {
+  const text = String(value ?? '').trim().toLowerCase();
+  const m = /^([a-z]+)[,\s]+(\d{4})$/.exec(text);
+  if (!m) return null;
+  const i = MONTH_NAMES.findIndex((n) => n === m[1] || n.slice(0, 3) === m[1].slice(0, 3));
+  if (i < 0) return null;
+  return `${m[2]}-${String(i + 1).padStart(2, '0')}`;
+}
+
+function daysInMonthOf(month: string): number {
+  const year = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  return new Date(Date.UTC(year, m, 0)).getUTCDate();
+}
+
+/**
+ * Reads the premiums grid: a row per month, columns 1..31 for the days.
+ *
+ * Rows are found by their month label rather than by position, so the year
+ * blocks can be stacked with a repeated header row between them — which is how
+ * the sheet is actually laid out — and the headers and footer totals fall out
+ * for free by simply not looking like "January, 2024".
+ */
+function parsePremiums(rows: RawRows, tab: string, problems: Problem[]): PremiumMonth[] {
+  if (rows.length === 0) return [];
+  const r = new Reader(tab, rows[0]);
+  const out: PremiumMonth[] = [];
+  const seen = new Map<string, number>();
+
+  for (const { row, n } of body(rows)) {
+    const month = monthLabel(row[0]);
+    if (month === null) continue; // header row, footer, or spacing
+
+    const first = seen.get(month);
+    if (first !== undefined) {
+      r.problem(n, 'month', `${month} already appears on row ${first}. Only the first is used.`);
+      continue;
+    }
+
+    const dim = daysInMonthOf(month);
+    const days: { day: number; amountCents: number }[] = [];
+    for (let day = 1; day <= 31; day++) {
+      const raw = row[day];
+      const text = String(raw ?? '').trim();
+      // Blank and N/A are both "no entry". They differ in meaning — one is a day
+      // not yet filled in, the other a day the month doesn't have — but neither
+      // is a zero, and treating them as zero would drag every average down.
+      if (text === '' || text.toUpperCase() === 'N/A') continue;
+      const amountCents = toCents(raw);
+      if (amountCents === null) {
+        r.problem(n, `day ${day}`, `Couldn't read "${text}" as an amount. That day was skipped.`);
+        continue;
+      }
+      if (day > dim) {
+        // A zero sitting in a day the month doesn't have is a spreadsheet
+        // artifact -- a formula filled across all 31 columns -- not a mistake
+        // anyone needs to hear about. Only a real figure is worth flagging,
+        // because only a real figure is missing from a total.
+        if (amountCents !== 0) {
+          r.problem(n, `day ${day}`, `${month} only has ${dim} days, but there's a figure in the day ${day} column. It was left out.`, 'warning');
+        }
+        continue;
+      }
+      days.push({ day, amountCents });
+    }
+
+    // A month with no cells filled in at all is a future placeholder, not a
+    // month that earned nothing. Including it would put a false zero on the
+    // chart and drag the monthly average toward it.
+    if (days.length === 0) continue;
+
+    const totalCents = days.reduce((a, d) => a + d.amountCents, 0);
+
+    // Cross-check the sheet's own Total column. It isn't used for anything, but
+    // a disagreement means a formula no longer covers every day cell, and that
+    // is worth knowing before you trust the figure you've been reading.
+    const stated = toCents(r.raw(row, 'total'));
+    if (stated !== null && stated !== totalCents) {
+      r.problem(n, 'total', `The Total column says ${(stated / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} but the day cells add to ${(totalCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. The app uses the day cells; check the formula's range.`, 'warning');
+    }
+
+    seen.set(month, n);
+    out.push({ month, days, totalCents, row: n });
+  }
+
+  out.sort((a, b) => a.month.localeCompare(b.month));
+  problems.push(...r.problems);
+  return out;
+}
+
+/**
+ * M/D/YY, MM/DD/YYYY or an ISO date, to YYYY-MM-DD.
+ *
+ * Both two- and four-digit years appear in the same column of the real sheet,
+ * so guessing one format would silently drop half the rows. A two-digit year
+ * is read as 20YY, which is right for every roll anyone will ever log here.
+ */
+function americanDate(value: unknown): string | null {
+  const iso = normaliseDate(value);
+  if (iso) return iso;
+  const text = String(value ?? '').trim();
+  const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/.exec(text);
+  if (!m) return null;
+  const [, mm, dd, yy] = m;
+  const year = yy.length === 2 ? `20${yy}` : yy;
+  return `${year}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+}
+
+/**
+ * Reads the rolls log.
+ *
+ * The sheet puts the percent-recovered on its own row beneath each roll, with
+ * blank spacer rows between tickers. Both fall out for free by requiring a
+ * ticker, the same way the premiums grid ignores its header and footer rows.
+ */
+function parseRolls(rows: RawRows, problems: Problem[]): Roll[] {
+  if (rows.length === 0) return [];
+  const r = new Reader('rolls', rows[0]);
+  r.missingColumns(['ticker', 'cost'], problems);
+
+  const out: Roll[] = [];
+
+  for (const { row, n } of body(rows)) {
+    const ticker = r.text(row, 'ticker').toUpperCase();
+    if (!ticker) continue; // the percentage row, or a spacer
+
+    const date = americanDate(r.raw(row, 'rolled at (mm/dd/yy)') ?? r.raw(row, 'rolled at'));
+    if (!date) {
+      r.problem(n, 'rolled at', `Couldn't read "${r.text(row, 'rolled at (mm/dd/yy)')}" as a date. Row skipped.`);
+      continue;
+    }
+
+    const costCents = toCents(r.raw(row, 'cost'));
+    if (costCents === null) {
+      r.problem(n, 'cost', `Couldn't read "${r.text(row, 'cost')}" as an amount. Row skipped.`);
+      continue;
+    }
+
+    const contractsRaw = r.raw(row, 'number of contracts');
+    const contracts = Number(String(contractsRaw ?? '1').replace(/,/g, '')) || 1;
+    const totalCostCents = Math.round(costCents * contracts);
+
+    // The sheet keeps its own total. Recompute and compare: a contract count
+    // edited without refreshing the total is exactly the kind of drift that
+    // makes a ledger quietly wrong rather than loudly broken.
+    const statedTotal = toCents(r.raw(row, 'total cost'));
+    if (statedTotal !== null && statedTotal !== totalCostCents) {
+      r.problem(n, 'total cost', `${ticker}: the sheet says ${(statedTotal / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} but cost x contracts is ${(totalCostCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. The app uses cost x contracts.`, 'warning');
+    }
+
+    const recoveredCents = toCents(r.raw(row, 'recovered')) ?? 0;
+    if (recoveredCents > totalCostCents) {
+      r.problem(n, 'recovered', `${ticker} has recovered more than the roll cost. Anything past the cost is profit, not recovery — worth checking the figure.`, 'warning');
+    }
+
+    out.push({
+      ticker,
+      date,
+      strikeFrom: Number(r.raw(row, 'rolled from')) || 0,
+      strikeTo: Number(r.raw(row, 'rolled to')) || 0,
+      costCents,
+      contracts,
+      totalCostCents,
+      recoveredCents,
+      row: n,
+    });
+  }
+
+  out.sort((a, b) => b.date.localeCompare(a.date) || b.totalCostCents - a.totalCostCents);
+  problems.push(...r.problems);
+  return out;
+}
+
 function parseConfig(rows: RawRows): Config {
   const map = new Map<string, string>();
   for (const row of rows.slice(1)) {
@@ -385,6 +567,9 @@ export function parseSheet(
   const balances = parseBalances(raw.balances, accounts, problems);
   const budgets = parseBudgets(raw.budgets, categories, problems);
   const positions = parsePositions(raw.positions, problems);
+  const premiums = parsePremiums(raw.premiums, 'premiums', problems);
+  const premiumsAnoosha = parsePremiums(raw.premiums_anoosha, 'premiums_anoosha', problems);
+  const rolls = parseRolls(raw.rolls, problems);
   const config = parseConfig(raw.config);
 
   transactions.sort((a, b) => b.date.localeCompare(a.date) || b.row - a.row);
@@ -395,7 +580,8 @@ export function parseSheet(
   );
 
   return {
-    accounts, categories, transactions, balances, budgets, positions, config,
+    accounts, categories, transactions, balances, budgets, positions,
+    premiums, premiumsAnoosha, rolls, config,
     problems, ...meta,
   };
 }

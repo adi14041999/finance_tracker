@@ -76,6 +76,55 @@ export interface Position {
   row: number;
 }
 
+/**
+ * One month of options-premium P&L, as the sheet lays it out: a row per month,
+ * a column per day of the month.
+ *
+ * The wide grid is kept rather than normalised to one row per day because it is
+ * what gets typed into daily, and a shape that suits entry is worth more than a
+ * shape that suits the parser. `days` is sparse — a day the month doesn't have
+ * (February 30th) and a day not yet filled in are both simply absent, which is
+ * different from a day that genuinely earned nothing and holds a 0.
+ *
+ * `totalCents` is recomputed from `days`, never read from the sheet's own Total
+ * column. A stale formula there would otherwise show a figure the daily cells
+ * don't support; instead the parser compares the two and raises a problem.
+ */
+export interface PremiumMonth {
+  month: string; // YYYY-MM
+  days: { day: number; amountCents: number }[];
+  totalCents: number;
+  row: number;
+}
+
+/**
+ * One roll of a short call, from a lower strike up to a higher one.
+ *
+ * The shape of the trade: a call was sold, the stock ran through the strike,
+ * and rather than let the shares get called away the position was bought back
+ * and rewritten higher. That costs a debit on the day — the difference between
+ * what it took to close the old strike and what the new one paid.
+ *
+ * `costCents` is that debit, per contract. It then gets earned back over time
+ * through the premium the new strike collects, which is what `recoveredCents`
+ * tracks: a running figure updated in the sheet, not something computed here.
+ *
+ * `totalCostCents` is recomputed as cost x contracts rather than read from the
+ * sheet, so a contract count edited without refreshing the total cannot quietly
+ * misstate what is owed.
+ */
+export interface Roll {
+  ticker: string;
+  date: string; // YYYY-MM-DD
+  strikeFrom: number;
+  strikeTo: number;
+  costCents: number; // per contract
+  contracts: number;
+  totalCostCents: number;
+  recoveredCents: number;
+  row: number;
+}
+
 export interface Config {
   monthlySpendTargetCents: number | null;
   annualSpendTargetCents: number | null;
@@ -102,6 +151,9 @@ export interface SheetData {
   balances: Balance[];
   budgets: Budget[];
   positions: Position[];
+  premiums: PremiumMonth[];
+  premiumsAnoosha: PremiumMonth[];
+  rolls: Roll[];
   config: Config;
   problems: Problem[];
   fetchedAt: string; // ISO timestamp
