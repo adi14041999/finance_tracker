@@ -11,7 +11,6 @@ export default async function ExpensesPage() {
   // an empty current month is a real state worth being able to look at.
   const seen = new Set(data.transactions.map((t) => t.month));
   seen.add(currentMonth);
-  if (data.config.startMonth) seen.add(data.config.startMonth);
 
   const months = [...seen].sort();
   // Fill any holes so the picker doesn't skip a month with no spending.

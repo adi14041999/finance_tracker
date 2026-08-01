@@ -7,7 +7,7 @@ never writes back to the sheet.
 Three pages:
 
 - **Expenses** — spend against budget by category, share-of-month donut, trend over YTD / 12 months / 3 or 5 years / all time, with 3, 6 and 12-month running averages, searchable ledger
-- **Net Worth** — cash / investment / debt split, history, per-account table, progress toward a goal
+- **Net Worth** — cash / investment / debt split, history over YTD / 12 months / 3 or 5 years / all time, per-account table with 1, 3, 6 and 12-month changes
 - **Robinhood Strategy** — a placeholder, to be designed later
 
 ---

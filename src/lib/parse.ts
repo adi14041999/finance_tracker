@@ -336,7 +336,6 @@ function parseConfig(rows: RawRows): Config {
     annualSpendTargetCents: cents('annual_spend_target'),
     netWorthGoalCents: cents('net_worth_goal'),
     concentrationWarnPct: fraction('concentration_warn_pct'),
-    startMonth: normaliseMonth(map.get('start_month')),
   };
 }
 

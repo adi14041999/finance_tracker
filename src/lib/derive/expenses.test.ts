@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  categorySpend, monthSummary, spendTrend, topCategories,
-  trendRangeMonths, earliestMonth,
+  categorySpend, monthSummary, spendTrend, topCategories, earliestMonth,
 } from './expenses';
 import type { Transaction, Category, Budget, Config } from '../types';
 
@@ -18,7 +17,6 @@ const EMPTY_CONFIG: Config = {
   annualSpendTargetCents: null,
   netWorthGoalCents: null,
   concentrationWarnPct: null,
-  startMonth: null,
 };
 
 let row = 1;
@@ -250,58 +248,6 @@ describe('spendTrend', () => {
     const [july] = spendTrend(twelve, ['2026-07'], null, [2]);
     expect(july.rolling[2]).toBe(115000);  // (1100+1200)/2
     expect(july.rolling[3]).toBeUndefined();
-  });
-});
-
-describe('trendRangeMonths', () => {
-  const EARLIEST = '2025-01';
-
-  it('year to date runs from January to the selected month', () => {
-    const months = trendRangeMonths('ytd', '2026-07', EARLIEST);
-    expect(months[0]).toBe('2026-01');
-    expect(months[months.length - 1]).toBe('2026-07');
-    expect(months).toHaveLength(7);
-  });
-
-  it('twelve months means twelve points, not thirteen', () => {
-    const months = trendRangeMonths('12m', '2026-07', EARLIEST);
-    expect(months).toHaveLength(12);
-    expect(months[0]).toBe('2025-08');
-  });
-
-  it('all time starts where the data starts', () => {
-    const months = trendRangeMonths('all', '2026-07', EARLIEST);
-    expect(months[0]).toBe('2025-01');
-    expect(months).toHaveLength(19);
-  });
-
-  it('clamps a long range to the history that exists', () => {
-    // Five years of nineteen-month data is nineteen months. Drawing forty-one
-    // months of $0 would read as "spent nothing", not "wasn't tracking".
-    expect(trendRangeMonths('5y', '2026-07', EARLIEST)).toHaveLength(19);
-    expect(trendRangeMonths('3y', '2026-07', EARLIEST)).toHaveLength(19);
-  });
-
-  it('does not clamp when the history is long enough', () => {
-    expect(trendRangeMonths('3y', '2026-07', '2000-01')).toHaveLength(36);
-    expect(trendRangeMonths('5y', '2026-07', '2000-01')).toHaveLength(60);
-  });
-
-  it('handles year to date in the first month of a year', () => {
-    const months = trendRangeMonths('ytd', '2026-01', EARLIEST);
-    expect(months).toEqual(['2026-01']);
-  });
-
-  it('clamps year to date when the data starts mid-year', () => {
-    expect(trendRangeMonths('ytd', '2026-07', '2026-04')).toEqual(
-      ['2026-04', '2026-05', '2026-06', '2026-07'],
-    );
-  });
-
-  it('never returns an empty range', () => {
-    expect(trendRangeMonths('all', '2026-07', null)).toEqual(['2026-07']);
-    // Data starting after the month being viewed shouldn't invert the range.
-    expect(trendRangeMonths('12m', '2025-01', '2026-01')).toEqual(['2025-01']);
   });
 });
 

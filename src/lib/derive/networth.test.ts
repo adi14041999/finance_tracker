@@ -15,7 +15,6 @@ const EMPTY_CONFIG: Config = {
   annualSpendTargetCents: null,
   netWorthGoalCents: null,
   concentrationWarnPct: null,
-  startMonth: null,
 };
 
 /** Thirteen consecutive months, 2025-07 through 2026-07. */
@@ -309,7 +308,9 @@ describe('visibleSeries', () => {
   it('trims only what is drawn', () => {
     const series = netWorthSeries(ACCOUNTS, balances);
     expect(series).toHaveLength(13);
-    expect(visibleSeries(series, '2026-05')).toHaveLength(3);
+    // Data runs 2025-07 .. 2026-07, so year-to-date is Jan through Jul.
+    expect(visibleSeries(series, 'ytd')).toHaveLength(7);
+    expect(visibleSeries(series, '12m')).toHaveLength(12);
   });
 
   it('leaves every computed figure untouched', () => {
@@ -320,16 +321,21 @@ describe('visibleSeries', () => {
     const before = accountTable(series)[0].changes[12].cents;
     expect(before).not.toBeNull();
 
-    visibleSeries(series, '2026-05');
+    visibleSeries(series, 'ytd');
     expect(accountTable(series)[0].changes[12].cents).toBe(before);
   });
 
-  it('returns everything when no start month is set', () => {
-    expect(visibleSeries(netWorthSeries(ACCOUNTS, balances), null)).toHaveLength(13);
+  it('all time returns the whole series', () => {
+    expect(visibleSeries(netWorthSeries(ACCOUNTS, balances), 'all')).toHaveLength(13);
   });
 
-  it('falls back to the whole series if the start month is past the data', () => {
-    expect(visibleSeries(netWorthSeries(ACCOUNTS, balances), '2099-01')).toHaveLength(13);
+  it('clamps a range longer than the history', () => {
+    // Five years of thirteen months is thirteen months.
+    expect(visibleSeries(netWorthSeries(ACCOUNTS, balances), '5y')).toHaveLength(13);
+  });
+
+  it('copes with an empty series', () => {
+    expect(visibleSeries([], 'all')).toEqual([]);
   });
 });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Account, Balance, Config } from '@/lib/types';
 import {
   netWorthSeries, netWorthSummary, accountTable, gapMonths, visibleSeries, LOOKBACKS,
@@ -8,6 +8,7 @@ import {
 import type { Change as ChangeValue } from '@/lib/derive/networth';
 import { formatMoney, formatPercent, pctChange } from '@/lib/money';
 import { formatMonth } from '@/lib/dates';
+import { RANGES, type Range } from '@/lib/range';
 import LineChart from './LineChart';
 import StatTile from './StatTile';
 import DonutChart from './DonutChart';
@@ -57,10 +58,8 @@ export default function NetWorthView({
 }) {
   // Every figure comes from the full history; start_month only trims the chart.
   const series = useMemo(() => netWorthSeries(accounts, balances), [accounts, balances]);
-  const charted = useMemo(
-    () => visibleSeries(series, config.startMonth),
-    [series, config.startMonth],
-  );
+  const [range, setRange] = useState<Range>('all');
+  const charted = useMemo(() => visibleSeries(series, range), [series, range]);
   const summary = useMemo(() => netWorthSummary(series, config), [series, config]);
   const rows = useMemo(() => accountTable(series), [series]);
   const gaps = useMemo(() => gapMonths(series), [series]);
@@ -187,11 +186,26 @@ export default function NetWorthView({
       </div>
 
       <section className="card p-5">
-        <h2 className="text-base font-semibold">History</h2>
-        <p className="mt-0.5 text-xs text-ink-muted">
-          Net worth, with cash and investments underneath. The gap between net worth
-          and the two of them combined is what you owe.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">History</h2>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              {charted.length} month{charted.length === 1 ? '' : 's'} to{' '}
+              {formatMonth(summary.current.month)}. Net worth, with cash and investments
+              underneath — the gap is what you owe.
+            </p>
+          </div>
+          <select
+            value={range}
+            onChange={(e) => setRange(e.target.value as Range)}
+            className="rounded-lg border border-hairline bg-surface px-3 py-1.5 text-sm"
+            aria-label="Time range"
+          >
+            {RANGES.map((r) => (
+              <option key={r.key} value={r.key}>{r.label}</option>
+            ))}
+          </select>
+        </div>
         <div className="mt-4">
           <LineChart
             months={months}

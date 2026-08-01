@@ -9,6 +9,7 @@
 import type { Account, AccountClass, Balance, Config } from '../types';
 import { monthRange } from '../dates';
 import { pctChange } from '../money';
+import { rangeStart, type Range } from '../range';
 
 export interface AccountPoint {
   accountId: string;
@@ -266,16 +267,13 @@ export function accountTable(series: NetWorthPoint[]): AccountRow[] {
 
 /**
  * The slice of the series to draw. Display only — every figure on the page is
- * computed from the full series regardless of what this returns.
+ * computed from the full series regardless of what this returns, which is the
+ * whole point: changing the range must never change a number.
  */
-export function visibleSeries(
-  series: NetWorthPoint[],
-  startMonth: string | null,
-): NetWorthPoint[] {
-  if (!startMonth) return series;
-  const trimmed = series.filter((p) => p.month >= startMonth);
-  // A start month past the end of the data would leave an empty chart; showing
-  // everything is a better failure than showing nothing.
+export function visibleSeries(series: NetWorthPoint[], range: Range): NetWorthPoint[] {
+  if (series.length === 0) return series;
+  const start = rangeStart(range, series[series.length - 1].month, series[0].month);
+  const trimmed = series.filter((p) => p.month >= start);
   return trimmed.length > 0 ? trimmed : series;
 }
 

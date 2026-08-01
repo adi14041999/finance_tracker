@@ -3,9 +3,9 @@
 import { useMemo, useState } from 'react';
 import type { Transaction, Category, Budget, Config } from '@/lib/types';
 import {
-  monthSummary, spendTrend, topCategories, TREND_WINDOWS,
-  TREND_RANGES, trendRangeMonths, earliestMonth, type TrendRange,
+  monthSummary, spendTrend, topCategories, TREND_WINDOWS, earliestMonth,
 } from '@/lib/derive/expenses';
+import { RANGES, rangeMonths, type Range } from '@/lib/range';
 import { formatMoney, formatPercent } from '@/lib/money';
 import { formatMonth, formatDayMonth } from '@/lib/dates';
 import BudgetBar from './BudgetBar';
@@ -47,7 +47,7 @@ export default function ExpensesView(props: Props) {
   const [trendCategory, setTrendCategory] = useState('');
   // Which running averages to overlay. All three can be on, or none.
   const [shownAverages, setShownAverages] = useState<number[]>([3]);
-  const [trendRange, setTrendRange] = useState<TrendRange>('12m');
+  const [trendRange, setTrendRange] = useState<Range>('12m');
 
   const summary = useMemo(
     () => monthSummary(transactions, categories, budgets, config, month, today),
@@ -56,7 +56,7 @@ export default function ExpensesView(props: Props) {
 
   const earliest = useMemo(() => earliestMonth(transactions), [transactions]);
   const trendMonths = useMemo(
-    () => trendRangeMonths(trendRange, month, earliest),
+    () => rangeMonths(trendRange, month, earliest),
     [trendRange, month, earliest],
   );
 
@@ -242,11 +242,11 @@ export default function ExpensesView(props: Props) {
           <div className="flex flex-wrap items-center gap-2">
             <select
               value={trendRange}
-              onChange={(e) => setTrendRange(e.target.value as TrendRange)}
+              onChange={(e) => setTrendRange(e.target.value as Range)}
               className="rounded-lg border border-hairline bg-surface px-3 py-1.5 text-sm"
               aria-label="Time range"
             >
-              {TREND_RANGES.map((r) => (
+              {RANGES.map((r) => (
                 <option key={r.key} value={r.key}>{r.label}</option>
               ))}
             </select>

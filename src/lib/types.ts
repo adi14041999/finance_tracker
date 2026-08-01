@@ -66,7 +66,6 @@ export interface Config {
   annualSpendTargetCents: number | null;
   netWorthGoalCents: number | null;
   concentrationWarnPct: number | null;
-  startMonth: string | null;
 }
 
 /**
