@@ -137,7 +137,7 @@ export default function NetWorthView({
                 label: 'Assets',
                 values: series.map((p) => p.assetsCents),
                 color: 'var(--series-2)',
-                dashed: true,
+                dash: '4 4',
               },
             ]}
           />

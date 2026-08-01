@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const PAGES = [
-  { href: '/expenses', label: 'Expenses & Budgeting' },
+  { href: '/expenses', label: 'Expenses' },
   { href: '/net-worth', label: 'Net Worth' },
   { href: '/robinhood', label: 'Robinhood' },
 ];

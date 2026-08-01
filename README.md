@@ -6,7 +6,7 @@ never writes back to the sheet.
 
 Three pages:
 
-- **Expenses & Budgeting** — spend against budget by category, share-of-month donut, 12-month trend per category, searchable ledger
+- **Expenses** — spend against budget by category, share-of-month donut, 12-month trend with 3/6/12-month running averages, searchable ledger
 - **Net Worth** — history, per-account table, progress toward a goal
 - **Robinhood Strategy** — a placeholder, to be designed later
 

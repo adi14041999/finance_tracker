@@ -181,18 +181,55 @@ describe('monthSummary', () => {
 });
 
 describe('spendTrend', () => {
-  it('totals each month and holds the rolling mean back until it is real', () => {
-    const transactions = [
-      tx('2026-05-01', 'Rent', 1000),
-      tx('2026-06-01', 'Rent', 2000),
-      tx('2026-07-01', 'Rent', 3000),
-    ];
-    const trend = spendTrend(transactions, ['2026-05', '2026-06', '2026-07']);
+  const twelve = [
+    tx('2025-08-01', 'Rent', 100), tx('2025-09-01', 'Rent', 200),
+    tx('2025-10-01', 'Rent', 300), tx('2025-11-01', 'Rent', 400),
+    tx('2025-12-01', 'Rent', 500), tx('2026-01-01', 'Rent', 600),
+    tx('2026-02-01', 'Rent', 700), tx('2026-03-01', 'Rent', 800),
+    tx('2026-04-01', 'Rent', 900), tx('2026-05-01', 'Rent', 1000),
+    tx('2026-06-01', 'Rent', 1100), tx('2026-07-01', 'Rent', 1200),
+  ];
 
-    expect(trend.map((p) => p.totalCents)).toEqual([100000, 200000, 300000]);
-    expect(trend[0].rollingCents).toBeNull();
-    expect(trend[1].rollingCents).toBeNull();
-    expect(trend[2].rollingCents).toBe(200000);
+  it('totals each month', () => {
+    const t = spendTrend(twelve, ['2026-05', '2026-06', '2026-07']);
+    expect(t.map((p) => p.totalCents)).toEqual([100000, 110000, 120000]);
+  });
+
+  it('computes 3, 6 and 12 month averages', () => {
+    const [july] = spendTrend(twelve, ['2026-07']);
+    expect(july.rolling[3]).toBe(110000);   // (1000+1100+1200)/3
+    expect(july.rolling[6]).toBe(95000);    // (700..1200)/6
+    expect(july.rolling[12]).toBe(65000);   // (100..1200)/12
+  });
+
+  it('returns null for a window longer than the history', () => {
+    const short = [tx('2026-06-01', 'Rent', 100), tx('2026-07-01', 'Rent', 200)];
+    const [july] = spendTrend(short, ['2026-07']);
+    // Only two months exist; every window reaches back before the sheet begins.
+    expect(july.rolling[3]).toBeNull();
+    expect(july.rolling[6]).toBeNull();
+    expect(july.rolling[12]).toBeNull();
+  });
+
+  it('turns each window on as soon as enough history exists', () => {
+    const t = spendTrend(twelve, ['2025-10', '2026-01', '2026-07']);
+    expect(t[0].rolling[3]).toBe(20000);    // Aug-Oct available
+    expect(t[0].rolling[6]).toBeNull();     // would need May 2025
+    expect(t[1].rolling[6]).toBe(35000);    // Aug-Jan available
+    expect(t[1].rolling[12]).toBeNull();
+    expect(t[2].rolling[12]).toBe(65000);   // full year available
+  });
+
+  it('uses real history, not just the visible window', () => {
+    // Charting only July must give the same averages as charting all twelve.
+    const narrow = spendTrend(twelve, ['2026-07'])[0];
+    const wide = spendTrend(twelve, twelve.map((t) => t.month))[11];
+    expect(narrow.rolling).toEqual(wide.rolling);
+  });
+
+  it('shows months with no spend as zero, not as a gap', () => {
+    const t = spendTrend([tx('2026-07-01', 'Rent', 1000)], ['2026-05', '2026-06', '2026-07']);
+    expect(t.map((p) => p.totalCents)).toEqual([0, 0, 100000]);
   });
 
   it('narrows to one category when asked', () => {
@@ -204,14 +241,14 @@ describe('spendTrend', () => {
     ];
     const all = spendTrend(transactions, ['2026-06', '2026-07']);
     const groceries = spendTrend(transactions, ['2026-06', '2026-07'], 'Groceries');
-
     expect(all.map((p) => p.totalCents)).toEqual([230000, 245000]);
     expect(groceries.map((p) => p.totalCents)).toEqual([30000, 45000]);
   });
 
-  it('shows months with no spend as zero, not as a gap', () => {
-    const trend = spendTrend([tx('2026-07-01', 'Rent', 1000)], ['2026-05', '2026-06', '2026-07']);
-    expect(trend.map((p) => p.totalCents)).toEqual([0, 0, 100000]);
+  it('honours a custom set of windows', () => {
+    const [july] = spendTrend(twelve, ['2026-07'], null, [2]);
+    expect(july.rolling[2]).toBe(115000);  // (1100+1200)/2
+    expect(july.rolling[3]).toBeUndefined();
   });
 });
 

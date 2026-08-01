@@ -1,5 +1,5 @@
 /**
- * Everything the Expenses & Budgeting page displays.
+ * Everything the Expenses page displays.
  *
  * Pure functions: data in, numbers out. No React, no fetching, no clock, no
  * randomness. That is what makes them testable, and the tests are the only
@@ -13,7 +13,7 @@
  */
 
 import type { Transaction, Category, Budget, Config } from '../types';
-import { monthProgress, daysInMonth } from '../dates';
+import { addMonths, monthProgress, daysInMonth } from '../dates';
 
 export interface CategorySpend {
   category: string;
@@ -144,24 +144,38 @@ export function monthSummary(
   };
 }
 
+/** The smoothing windows the Expenses page offers, in months. */
+export const TREND_WINDOWS = [3, 6, 12] as const;
+
 export interface TrendPoint {
   month: string;
   totalCents: number;
-  /** centred-trailing 3-month mean, null until there are 3 months behind it */
-  rollingCents: number | null;
+  /** window size in months -> the average, or null if history is too short */
+  rolling: Record<number, number | null>;
 }
 
 /**
- * Monthly totals across a span, with a 3-month trailing mean so one expensive
- * month doesn't read as a trend. Months with no data appear as zero, which is
- * correct for a continuous series — a gap would imply the chart is broken.
+ * Monthly totals across a span, plus a running average for each requested
+ * window so one expensive month doesn't read as a trend.
  *
- * Pass a category to narrow it to that one; omit it for everything.
+ * Two rules worth stating:
+ *
+ * Averages are computed from the real data, not from the visible months. Change
+ * the chart's range and the numbers must not move — narrowing a view is not a
+ * change to what happened.
+ *
+ * A window that reaches back before the sheet begins returns null rather than
+ * treating those months as zero. Months that never existed aren't months in
+ * which you spent nothing, and averaging them in would invent a downward trend
+ * at the very start of every series.
+ *
+ * Pass a category to narrow to that one; omit it for everything.
  */
 export function spendTrend(
   transactions: Transaction[],
   months: string[],
   category?: string | null,
+  windows: readonly number[] = TREND_WINDOWS,
 ): TrendPoint[] {
   const totals = new Map<string, number>();
   for (const t of transactions) {
@@ -169,14 +183,23 @@ export function spendTrend(
     totals.set(t.month, (totals.get(t.month) ?? 0) + t.amountCents);
   }
 
-  return months.map((month, i) => {
-    const totalCents = totals.get(month) ?? 0;
-    let rollingCents: number | null = null;
-    if (i >= 2) {
-      const window = months.slice(i - 2, i + 1).map((m) => totals.get(m) ?? 0);
-      rollingCents = Math.round(window.reduce((a, b) => a + b, 0) / 3);
+  const earliest = [...totals.keys()].sort()[0];
+
+  return months.map((month) => {
+    const rolling: Record<number, number | null> = {};
+
+    for (const w of windows) {
+      const first = addMonths(month, -(w - 1));
+      if (earliest === undefined || first < earliest) {
+        rolling[w] = null;
+        continue;
+      }
+      let sum = 0;
+      for (let i = 0; i < w; i++) sum += totals.get(addMonths(month, -i)) ?? 0;
+      rolling[w] = Math.round(sum / w);
     }
-    return { month, totalCents, rollingCents };
+
+    return { month, totalCents: totals.get(month) ?? 0, rolling };
   });
 }
 

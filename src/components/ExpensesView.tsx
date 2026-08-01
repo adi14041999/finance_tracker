@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Transaction, Category, Budget, Config } from '@/lib/types';
-import { monthSummary, spendTrend, topCategories } from '@/lib/derive/expenses';
+import { monthSummary, spendTrend, topCategories, TREND_WINDOWS } from '@/lib/derive/expenses';
 import { formatMoney, formatPercent } from '@/lib/money';
 import { addMonths, formatMonth, formatDayMonth } from '@/lib/dates';
 import BudgetBar from './BudgetBar';
@@ -19,6 +19,18 @@ interface Props {
 }
 
 /**
+ * Each running average gets its own hue and its own dash pattern. Colour alone
+ * would be enough for most readers; the dash makes them separable in greyscale,
+ * for colour-blind readers, and — most usefully — where the lines overlap.
+ * Longer window, longer dash.
+ */
+const AVERAGE_STYLE: Record<number, { color: string; dash: string }> = {
+  3: { color: 'var(--series-2)', dash: '2 3' },
+  6: { color: 'var(--series-3)', dash: '6 3' },
+  12: { color: 'var(--series-4)', dash: '12 4' },
+};
+
+/**
  * The whole Expenses page runs client-side off data the server already loaded.
  * Switching month or typing in the search box is then instant — no round trip —
  * and the derive functions are the same pure ones the tests cover.
@@ -30,6 +42,8 @@ export default function ExpensesView(props: Props) {
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [trendCategory, setTrendCategory] = useState('');
+  // Which running averages to overlay. All three can be on, or none.
+  const [shownAverages, setShownAverages] = useState<number[]>([3]);
 
   const summary = useMemo(
     () => monthSummary(transactions, categories, budgets, config, month, today),
@@ -71,7 +85,7 @@ export default function ExpensesView(props: Props) {
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Expenses &amp; Budgeting</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Expenses</h1>
           <p className="mt-0.5 text-sm text-ink-secondary">
             {summary.transactionCount} expense{summary.transactionCount === 1 ? '' : 's'} in{' '}
             {formatMonth(month)}
@@ -215,8 +229,8 @@ export default function ExpensesView(props: Props) {
           <div>
             <h2 className="text-base font-semibold">Trend</h2>
             <p className="mt-0.5 text-xs text-ink-muted">
-              Twelve months to {formatMonth(month)}, with a 3-month average so one big
-              month doesn&apos;t read as a trend.
+              Twelve months to {formatMonth(month)}. Overlay running averages to see
+              past the month-to-month noise — the longer the window, the smoother the line.
             </p>
           </div>
           <select
@@ -231,6 +245,42 @@ export default function ExpensesView(props: Props) {
             ))}
           </select>
         </div>
+
+        <fieldset className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <legend className="sr-only">Running averages to show</legend>
+          <span className="text-xs text-ink-muted">Running average</span>
+          {TREND_WINDOWS.map((w) => {
+            const on = shownAverages.includes(w);
+            const style = AVERAGE_STYLE[w];
+            return (
+              <label
+                key={w}
+                className="flex cursor-pointer items-center gap-1.5 text-sm text-ink-secondary"
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() =>
+                    setShownAverages((prev) =>
+                      prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w].sort((a, b) => a - b),
+                    )
+                  }
+                  className="h-3.5 w-3.5 accent-[var(--series-1)]"
+                />
+                <svg width="16" height="8" aria-hidden className="shrink-0">
+                  <line
+                    x1="0" y1="4" x2="16" y2="4"
+                    stroke={on ? style.color : 'var(--axis)'}
+                    strokeWidth="2"
+                    strokeDasharray={style.dash}
+                  />
+                </svg>
+                {w} month
+              </label>
+            );
+          })}
+        </fieldset>
+
         <div className="mt-4">
           <LineChart
             months={trendMonths}
@@ -242,13 +292,13 @@ export default function ExpensesView(props: Props) {
                 color: 'var(--series-1)',
                 area: true,
               },
-              {
-                key: 'rolling',
-                label: '3-month average',
-                values: trend.map((p) => p.rollingCents),
-                color: 'var(--series-2)',
-                dashed: true,
-              },
+              ...shownAverages.map((w) => ({
+                key: `avg${w}`,
+                label: `${w}-month average`,
+                values: trend.map((p) => p.rolling[w] ?? null),
+                color: AVERAGE_STYLE[w].color,
+                dash: AVERAGE_STYLE[w].dash,
+              })),
             ]}
           />
         </div>

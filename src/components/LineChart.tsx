@@ -14,7 +14,9 @@ export interface Series {
   /** cents; null renders a gap in the line rather than a false zero */
   values: (number | null)[];
   color: string;
-  dashed?: boolean;
+  /** SVG dash pattern. A second channel besides colour, so overlapping lines
+   *  stay tellable apart in greyscale and for colour-blind readers. */
+  dash?: string;
   area?: boolean;
 }
 
@@ -79,7 +81,7 @@ export default function LineChart({
                 <line
                   x1="0" y1="4" x2="14" y2="4"
                   stroke={s.color} strokeWidth="2"
-                  strokeDasharray={s.dashed ? '3 3' : undefined}
+                  strokeDasharray={s.dash}
                 />
               </svg>
               {s.label}
@@ -149,7 +151,7 @@ export default function LineChart({
                   strokeWidth="2"
                   strokeLinejoin="round"
                   strokeLinecap="round"
-                  strokeDasharray={s.dashed ? '4 4' : undefined}
+                  strokeDasharray={s.dash}
                 />
               </g>
             );
