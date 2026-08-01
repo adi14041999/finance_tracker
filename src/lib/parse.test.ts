@@ -27,9 +27,9 @@ function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
       ['month', 'category', 'amount'],
       ['2026-07', 'Groceries', 600],
     ],
-    holdings: [
-      ['account_id', 'ticker', 'name', 'asset_class', 'quantity', 'price', 'market_value', 'cost_basis'],
-      ['chk', 'VTI', 'Vanguard', 'us_equity', 142.5, 305.4, 43519.5, 34200],
+    positions: [
+      ['ticker', 'recover', 'mean', 'units', 'price'],
+      ['NVDA', 19396, 128.75, 200.24, 181.4],
     ],
     config: [
       ['key', 'value', 'description'],
@@ -205,5 +205,81 @@ describe('ordering', () => {
       ],
     }), META);
     expect(data.balances.map((b) => b.date)).toEqual(['2026-06-30', '2026-08-31']);
+  });
+});
+
+describe('positions', () => {
+  const p = (rows: unknown[][]) =>
+    parseSheet(sheet({ positions: [['ticker', 'recover', 'mean', 'units', 'price'], ...rows] }), META);
+
+  it('reads a held position', () => {
+    const { positions } = p([['META', 205096, 350, 500.86, 712.4]]);
+    expect(positions).toHaveLength(1);
+    expect(positions[0].recoverCents).toBe(20_509_600);
+    expect(positions[0].meanCents).toBe(35_000);
+    expect(positions[0].units).toBe(500.86);
+    expect(positions[0].priceCents).toBe(71_240);
+  });
+
+  it('reads a closed position as a debt with no vehicle', () => {
+    const { positions, problems } = p([['ENPH', 20001, '', '', '']]);
+    expect(positions[0].meanCents).toBeNull();
+    expect(positions[0].units).toBeNull();
+    expect(positions[0].recoverCents).toBe(2_000_100);
+    expect(problems).toEqual([]);
+  });
+
+  it('skips the SUM row at the bottom without complaining about it', () => {
+    // A blank ticker with a total beside it is a deliberate thing people put in
+    // sheets. Warning about it would make the problems list worth ignoring.
+    const { positions, problems } = p([['AAL', 500, '', ''], ['', 422956, '', '']]);
+    expect(positions.map((x) => x.ticker)).toEqual(['AAL']);
+    expect(problems).toEqual([]);
+  });
+
+  it('treats zero units as no position', () => {
+    const { positions } = p([['X', 500, 12, 0]]);
+    expect(positions[0].units).toBeNull();
+  });
+
+  it('flags a half-filled row rather than inventing a break-even price', () => {
+    const { positions, problems } = p([['X', 5000, 12, '']]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0].column).toBe('units');
+    expect(problems[0].severity).toBe('warning');
+    // The debt survives; only the position claim is dropped.
+    expect(positions[0].recoverCents).toBe(500_000);
+    expect(positions[0].meanCents).toBeNull();
+  });
+
+  it('rejects a duplicate ticker instead of double-counting it', () => {
+    const { positions, problems } = p([['AAL', 500, '', ''], ['AAL', 700, '', '']]);
+    expect(positions).toHaveLength(1);
+    expect(positions[0].recoverCents).toBe(50_000);
+    expect(problems[0].message).toContain('already appears on row 2');
+  });
+
+  it('drops a row that owes nothing and holds nothing', () => {
+    const { positions, problems } = p([['GONE', 0, '', '']]);
+    expect(positions).toEqual([]);
+    expect(problems).toEqual([]);
+  });
+
+  it('uppercases tickers so casing in the sheet cannot split a name', () => {
+    const { positions, problems } = p([['meta', 100, '', ''], ['META', 200, '', '']]);
+    expect(positions).toHaveLength(1);
+    expect(problems).toHaveLength(1);
+  });
+
+  it('leaves price null when GOOGLEFINANCE has not resolved', () => {
+    const { positions } = p([['X', 500, 12, 100, '']]);
+    expect(positions[0].priceCents).toBeNull();
+    expect(positions[0].units).toBe(100);
+  });
+
+  it('rejects negative units rather than modelling a short', () => {
+    const { positions, problems } = p([['X', 500, 12, -100]]);
+    expect(positions).toEqual([]);
+    expect(problems[0].column).toBe('units');
   });
 });

@@ -20,7 +20,7 @@ import type { SheetData } from './types';
 
 const TABS = [
   'accounts', 'categories', 'transactions',
-  'balances', 'budgets', 'holdings', 'config',
+  'balances', 'budgets', 'positions', 'config',
 ] as const;
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -110,7 +110,7 @@ function explain(status: number, body: string): string {
     return 'No sheet with that ID (404). GOOGLE_SHEET_ID should be the part of the URL between /d/ and /edit.';
   }
   if (status === 400 && body.includes('Unable to parse range')) {
-    return 'One of the seven tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, holdings, config.';
+    return 'One of the seven tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, positions, config.';
   }
   if (status === 401) {
     return 'Google rejected the credentials (401). If you pasted the private key by hand, check that the \\n escapes survived intact.';

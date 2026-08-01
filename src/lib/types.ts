@@ -49,15 +49,30 @@ export interface Budget {
   row: number;
 }
 
-export interface Holding {
-  accountId: string;
+/**
+ * One ticker on the recovery ledger.
+ *
+ * Two independent things live in a single row, and keeping them straight is the
+ * whole point of this type:
+ *
+ *   `recoverCents` is a REALIZED loss. Money already lost on trades that are
+ *   closed and settled. It is history, and no price movement changes it — only
+ *   editing the sheet does.
+ *
+ *   `meanCents` and `units` describe a position held RIGHT NOW, which is the
+ *   vehicle for earning that history back. Its gain is unrealized until sold.
+ *
+ * A row can have either, both, or — for a name that's closed with nothing owed —
+ * neither, in which case it carries no information and is skipped. When mean and
+ * units are absent but a recover figure is present, the loss is real but there
+ * is no position behind it, so there is no price at which it comes back.
+ */
+export interface Position {
   ticker: string;
-  name: string;
-  assetClass: string;
-  quantity: number;
-  priceCents: number;
-  marketValueCents: number;
-  costBasisCents: number | null;
+  recoverCents: number;
+  meanCents: number | null; // weighted average cost per share
+  units: number | null; // fractional shares are normal, so this is a float
+  priceCents: number | null; // live, via GOOGLEFINANCE; null when unavailable
   row: number;
 }
 
@@ -86,7 +101,7 @@ export interface SheetData {
   transactions: Transaction[];
   balances: Balance[];
   budgets: Budget[];
-  holdings: Holding[];
+  positions: Position[];
   config: Config;
   problems: Problem[];
   fetchedAt: string; // ISO timestamp

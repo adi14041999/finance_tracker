@@ -56,7 +56,7 @@ export default function NetWorthView({
   balances: Balance[];
   config: Config;
 }) {
-  // Every figure comes from the full history; start_month only trims the chart.
+  // Every figure comes from the full history; the range dropdown only trims the chart.
   const series = useMemo(() => netWorthSeries(accounts, balances), [accounts, balances]);
   const [range, setRange] = useState<Range>('all');
   const charted = useMemo(() => visibleSeries(series, range), [series, range]);

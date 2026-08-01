@@ -11,7 +11,7 @@
 
 import type {
   Account, AccountClass, Balance, Budget, Category,
-  Config, Holding, Problem, SheetData, Transaction,
+  Config, Position, Problem, SheetData, Transaction,
 } from './types';
 import { toCents } from './money';
 import { monthOf, normaliseDate, normaliseMonth } from './dates';
@@ -24,7 +24,7 @@ export interface RawSheet {
   transactions: RawRows;
   balances: RawRows;
   budgets: RawRows;
-  holdings: RawRows;
+  positions: RawRows;
   config: RawRows;
 }
 
@@ -275,38 +275,70 @@ function parseBudgets(rows: RawRows, categories: Category[], problems: Problem[]
   return out;
 }
 
-function parseHoldings(rows: RawRows, problems: Problem[]): Holding[] {
+/** Share counts, which unlike money are genuinely fractional. */
+function toUnits(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/[,\s]/g, ''));
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+function parsePositions(rows: RawRows, problems: Problem[]): Position[] {
   if (rows.length === 0) return [];
-  const r = new Reader('holdings', rows[0]);
-  const out: Holding[] = [];
+  const r = new Reader('positions', rows[0]);
+  r.missingColumns(['ticker', 'recover'], problems);
+
+  const out: Position[] = [];
+  const seen = new Map<string, number>();
 
   for (const { row, n } of body(rows)) {
-    const ticker = r.text(row, 'ticker');
+    const ticker = r.text(row, 'ticker').toUpperCase();
+
+    // A blank ticker is almost always a SUM row or spacing at the bottom of the
+    // range. Skipping it silently is deliberate: warning about the total row
+    // you deliberately put there would train you to ignore the problems list.
     if (!ticker) continue;
 
-    const quantityRaw = r.text(row, 'quantity');
-    const quantity = Number(quantityRaw.replace(/,/g, ''));
-    const priceCents = toCents(r.raw(row, 'price'));
-    const marketValueCents = toCents(r.raw(row, 'market_value'));
-
-    if (!Number.isFinite(quantity)) {
-      r.problem(n, 'quantity', `Couldn't read "${quantityRaw}" as a number. Row skipped.`);
+    const first = seen.get(ticker);
+    if (first !== undefined) {
+      r.problem(n, 'ticker', `${ticker} already appears on row ${first}. One row per ticker — combine them, or the totals double-count. Row skipped.`);
       continue;
     }
-    if (priceCents === null && marketValueCents === null) {
-      // Almost always the GOOGLEFINANCE formula erroring or still loading.
-      r.problem(n, 'price', `No price or market value for ${ticker}. If the GOOGLEFINANCE formula shows an error, the ticker may be wrong.`, 'warning');
+    seen.set(ticker, n);
+
+    const recoverCents = toCents(r.raw(row, 'recover')) ?? 0;
+    let meanCents = toCents(r.raw(row, 'mean'));
+    let units = toUnits(r.raw(row, 'units'));
+
+    // Zero units is the same thing as no units: there is no position. Saying so
+    // here keeps every later division by `units` safe by construction.
+    if (units === 0) units = null;
+    if (meanCents === 0) meanCents = null;
+
+    // Half a position is worse than none, because it silently produces a
+    // break-even price computed from a missing number.
+    if ((meanCents === null) !== (units === null)) {
+      const have = units === null ? 'mean' : 'units';
+      const missing = units === null ? 'units' : 'mean';
+      r.problem(n, missing, `${ticker} has a ${have} but no ${missing}, so no break-even price can be worked out. Its $${(recoverCents / 100).toLocaleString('en-US')} is counted as closed until both are filled in.`, 'warning');
+      meanCents = null;
+      units = null;
+    }
+
+    // Nothing owed and nothing held. An empty row with a ticker in it.
+    if (recoverCents === 0 && units === null) continue;
+
+    if (units !== null && units < 0) {
+      r.problem(n, 'units', `${ticker} has negative units. Short positions aren't handled here. Row skipped.`);
+      continue;
     }
 
     out.push({
-      accountId: r.text(row, 'account_id'),
       ticker,
-      name: r.text(row, 'name'),
-      assetClass: r.text(row, 'asset_class') || 'other',
-      quantity,
-      priceCents: priceCents ?? 0,
-      marketValueCents: marketValueCents ?? Math.round((priceCents ?? 0) * quantity),
-      costBasisCents: toCents(r.raw(row, 'cost_basis')),
+      recoverCents,
+      meanCents,
+      units,
+      priceCents: toCents(r.raw(row, 'price')),
       row: n,
     });
   }
@@ -352,7 +384,7 @@ export function parseSheet(
   const transactions = parseTransactions(raw.transactions, categories, problems);
   const balances = parseBalances(raw.balances, accounts, problems);
   const budgets = parseBudgets(raw.budgets, categories, problems);
-  const holdings = parseHoldings(raw.holdings, problems);
+  const positions = parsePositions(raw.positions, problems);
   const config = parseConfig(raw.config);
 
   transactions.sort((a, b) => b.date.localeCompare(a.date) || b.row - a.row);
@@ -363,7 +395,7 @@ export function parseSheet(
   );
 
   return {
-    accounts, categories, transactions, balances, budgets, holdings, config,
+    accounts, categories, transactions, balances, budgets, positions, config,
     problems, ...meta,
   };
 }

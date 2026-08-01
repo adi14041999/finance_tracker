@@ -73,13 +73,23 @@ const ACCOUNTS = [
   ['loan_car', 'Car Loan', 'liability'],
 ];
 
-const HOLDINGS = [
-  ['brk_rh', 'VTI', 'Vanguard Total US Market', 'us_equity', 142.5, 305.4, 43519.5, 34200],
-  ['brk_rh', 'VXUS', 'Vanguard Total International', 'intl_equity', 310, 68.22, 21148.2, 19100],
-  ['brk_rh', 'NVDA', 'NVIDIA', 'us_equity', 45, 178.3, 8023.5, 4900],
-  ['brk_rh', 'CASH', 'Settlement fund', 'cash', 3200, 1, 3200, 3200],
-  ['ret_401k', 'BND', 'Vanguard Total Bond', 'bond', 180, 73.1, 13158, 13500],
-  ['ret_401k', 'VTI', 'Vanguard Total US Market', 'us_equity', 210, 305.4, 64134, 51000],
+/**
+ * ticker, recover, mean, units, price.
+ *
+ * Chosen to exercise every branch of the recovery page rather than to look
+ * tidy: one name already past break-even, one deep under water, one owing
+ * nothing at all, two closed with no position to earn the loss back, and one
+ * whose price is blank the way GOOGLEFINANCE leaves it for a bad ticker.
+ */
+const POSITIONS = [
+  ['NVDA', 19396, 128.75, 200.24, 181.4],
+  ['META', 205096, 350, 500.86, 640.12],
+  ['PLUG', 6000, 1.71, 4000, 1.12],
+  ['VTI', 0, 305.4, 142.5, 337.18],
+  ['SNOW', 10000, 150, 100, 262.5],
+  ['ENPH', 20001, '', '', ''],
+  ['PLTR', 10000, '', '', ''],
+  ['MOGU', 500, '', '', ''],
 ];
 
 /**
@@ -177,9 +187,9 @@ export function sampleSheet(today: string): RawSheet {
     transactions,
     balances,
     budgets,
-    holdings: [
-      ['account_id', 'ticker', 'name', 'asset_class', 'quantity', 'price', 'market_value', 'cost_basis'],
-      ...HOLDINGS,
+    positions: [
+      ['ticker', 'recover', 'mean', 'units', 'price'],
+      ...POSITIONS,
     ],
     config: [
       ['key', 'value', 'description'],
@@ -187,7 +197,6 @@ export function sampleSheet(today: string): RawSheet {
       ['annual_spend_target', 60000, ''],
       ['net_worth_goal', 1000000, ''],
       ['concentration_warn_pct', 0.25, ''],
-      ['start_month', months[0], ''],
     ],
   };
 }

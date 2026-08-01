@@ -49,10 +49,10 @@ export interface NetWorthPoint {
  * We never carry forward *before* an account's first real row — an account you
  * opened in March did not exist in January.
  *
- * This always covers every month you have data for. `start_month` trims what
- * the CHART draws, never what gets computed — otherwise setting it to January
- * would silently blank out every year-on-year comparison, which is exactly the
- * bug it caused when this function honoured it.
+ * This always covers every month you have data for. Narrowing the range on the
+ * page trims what the CHART draws, never what gets computed — see
+ * `visibleSeries`. Getting that backwards silently blanked every year-on-year
+ * comparison the one time this function honoured a start month itself.
  */
 export function netWorthSeries(
   accounts: Account[],
