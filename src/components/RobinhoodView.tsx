@@ -1,10 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import type { EventMonth, Position, PremiumMonth, Roll } from '@/lib/types';
+import type {
+  EventMonth, MarginReading, MissionDay, Position, PremiumMonth, Roll,
+} from '@/lib/types';
 import PositionsTab from './PositionsTab';
 import PremiumsTab from './PremiumsTab';
 import RollsTab from './RollsTab';
+import MarginTab from './MarginTab';
 import EventsTab from './EventsTab';
 
 /**
@@ -17,19 +20,23 @@ const TABS = [
   { key: 'positions', label: 'Positions' },
   { key: 'premiums', label: 'Premiums' },
   { key: 'rolls', label: 'Rolls' },
+  { key: 'margin', label: 'Margin' },
   { key: 'events', label: 'Event contracts' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function RobinhoodView({
-  positions, premiums, premiumsAnoosha, rolls, events,
+  positions, premiums, premiumsAnoosha, rolls, events, margin, mission, today,
 }: {
   positions: Position[];
   premiums: PremiumMonth[];
   premiumsAnoosha: PremiumMonth[];
   rolls: Roll[];
   events: EventMonth[];
+  margin: MarginReading[];
+  mission: MissionDay[];
+  today: string;
 }) {
   const [tab, setTab] = useState<TabKey>('positions');
 
@@ -73,7 +80,8 @@ export default function RobinhoodView({
         />
       )}
       {tab === 'rolls' && <RollsTab rolls={rolls} />}
-      {tab === 'events' && <EventsTab events={events} />}
+      {tab === 'margin' && <MarginTab margin={margin} today={today} />}
+      {tab === 'events' && <EventsTab events={events} mission={mission} today={today} />}
     </div>
   );
 }

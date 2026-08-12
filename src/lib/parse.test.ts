@@ -46,6 +46,12 @@ function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
     events: [
       ['Month', 'Total', 'Realized profit & loss YTD'],
     ],
+    margin: [
+      ['date', 'margin'],
+    ],
+    mission: [
+      ['date', 'amount'],
+    ],
     config: [
       ['key', 'value', 'description'],
       ['monthly_spend_target', 5000, ''],

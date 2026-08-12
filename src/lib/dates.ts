@@ -156,3 +156,16 @@ export function monthProgress(month: string, today: string): number {
   const day = Number(today.slice(8, 10));
   return day / daysInMonth(y, m);
 }
+
+/** Days between two YYYY-MM-DD dates. Built from parts, so no timezone. */
+export function daysBetween(from: string, to: string): number {
+  const [ay, am, ad] = from.split('-').map(Number);
+  const [by, bm, bd] = to.split('-').map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+/** Adds days to a YYYY-MM-DD date, staying in string space. */
+export function addDays(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}

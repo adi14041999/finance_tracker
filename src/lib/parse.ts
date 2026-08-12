@@ -11,7 +11,8 @@
 
 import type {
   Account, AccountClass, Balance, Budget, Category,
-  Config, EventMonth, Position, PremiumMonth, Problem, Roll, SheetData, Transaction,
+  Config, EventMonth, MarginReading, MissionDay, Position, PremiumMonth, Problem,
+  Roll, SheetData, Transaction,
 } from './types';
 import { toCents } from './money';
 import { monthOf, normaliseDate, normaliseMonth } from './dates';
@@ -29,6 +30,8 @@ export interface RawSheet {
   premiums_anoosha: RawRows;
   rolls: RawRows;
   events: RawRows;
+  margin: RawRows;
+  mission: RawRows;
   config: RawRows;
 }
 
@@ -596,6 +599,97 @@ function parseEvents(rows: RawRows, problems: Problem[]): EventMonth[] {
   return out;
 }
 
+/**
+ * Margin readings.
+ *
+ * Nothing here complains about a reading taken on the wrong day or at the wrong
+ * interval. A schedule is an intention, not a rule the data must obey — record
+ * a day late and the figure is still true. The page shows when the next one is
+ * due instead, which is useful where a warning would only be a scolding.
+ */
+function parseMargin(rows: RawRows, problems: Problem[]): MarginReading[] {
+  if (rows.length === 0) return [];
+  const r = new Reader('margin', rows[0]);
+  r.missingColumns(['date', 'margin'], problems);
+
+  const out: MarginReading[] = [];
+  const seen = new Map<string, number>();
+
+  for (const { row, n } of body(rows)) {
+    const date = normaliseDate(r.raw(row, 'date')) ?? americanDate(r.raw(row, 'date'));
+    if (!date) {
+      r.problem(n, 'date', `Couldn't read "${r.text(row, 'date')}" as a date. Row skipped.`);
+      continue;
+    }
+
+    const first = seen.get(date);
+    if (first !== undefined) {
+      r.problem(n, 'date', `There's already a reading for ${date} on row ${first}. Only the first is used.`);
+      continue;
+    }
+
+    const marginCents = toCents(r.raw(row, 'margin'));
+    if (marginCents === null) {
+      r.problem(n, 'margin', `Couldn't read "${r.text(row, 'margin')}" as an amount. Row skipped.`);
+      continue;
+    }
+
+    // Margin is money borrowed, so it cannot be less than nothing. A negative
+    // here is a typo, and left alone it would draw the debt as an asset.
+    if (marginCents < 0) {
+      r.problem(n, 'margin', `${date}: margin is ${(marginCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}. Record it as a positive amount — 12000 means $12,000 borrowed, and 0 means clear.`);
+      continue;
+    }
+
+    seen.set(date, n);
+    out.push({ date, marginCents, row: n });
+  }
+
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  problems.push(...r.problems);
+  return out;
+}
+
+/**
+ * The mission log: one row per day, with what that day earned.
+ *
+ * A day that lost money is a real entry, so negatives pass through untouched —
+ * it simply doesn't clear the bar. A day not yet logged is absent rather than
+ * zero, which is different from a logged zero and is treated differently.
+ */
+function parseMission(rows: RawRows, problems: Problem[]): MissionDay[] {
+  if (rows.length === 0) return [];
+  const r = new Reader('mission', rows[0]);
+  r.missingColumns(['date', 'amount'], problems);
+
+  const out: MissionDay[] = [];
+  const seen = new Map<string, number>();
+
+  for (const { row, n } of body(rows)) {
+    const date = normaliseDate(r.raw(row, 'date')) ?? americanDate(r.raw(row, 'date'));
+    if (!date) {
+      r.problem(n, 'date', `Couldn't read "${r.text(row, 'date')}" as a date. Row skipped.`);
+      continue;
+    }
+    const first = seen.get(date);
+    if (first !== undefined) {
+      r.problem(n, 'date', `There's already a row for ${date} on row ${first}. Only the first is used.`);
+      continue;
+    }
+    const amountCents = toCents(r.raw(row, 'amount'));
+    if (amountCents === null) {
+      r.problem(n, 'amount', `Couldn't read "${r.text(row, 'amount')}" as an amount. Row skipped.`);
+      continue;
+    }
+    seen.set(date, n);
+    out.push({ date, amountCents, row: n });
+  }
+
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  problems.push(...r.problems);
+  return out;
+}
+
 function parseConfig(rows: RawRows): Config {
   const map = new Map<string, string>();
   for (const row of rows.slice(1)) {
@@ -638,6 +732,8 @@ export function parseSheet(
   const premiumsAnoosha = parsePremiums(raw.premiums_anoosha, 'premiums_anoosha', problems);
   const rolls = parseRolls(raw.rolls, problems);
   const events = parseEvents(raw.events, problems);
+  const margin = parseMargin(raw.margin, problems);
+  const mission = parseMission(raw.mission, problems);
   const config = parseConfig(raw.config);
 
   transactions.sort((a, b) => b.date.localeCompare(a.date) || b.row - a.row);
@@ -649,7 +745,7 @@ export function parseSheet(
 
   return {
     accounts, categories, transactions, balances, budgets, positions,
-    premiums, premiumsAnoosha, rolls, events, config,
+    premiums, premiumsAnoosha, rolls, events, margin, mission, config,
     problems, ...meta,
   };
 }

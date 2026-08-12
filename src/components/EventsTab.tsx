@@ -6,6 +6,8 @@ import { eventRows, eventYears, eventSummary, type EventRow } from '@/lib/derive
 import { formatMoney, formatMoneyCompact } from '@/lib/money';
 import { formatMonth } from '@/lib/dates';
 import { RANGES, rangeStart, type Range } from '@/lib/range';
+import MissionSection from './MissionSection';
+import type { MissionDay } from '@/lib/types';
 
 /**
  * Gains blue, losses orange — the same validated diverging pair used elsewhere.
@@ -97,7 +99,13 @@ function MonthlyBars({ rows }: { rows: EventRow[] }) {
   );
 }
 
-export default function EventsTab({ events }: { events: EventMonth[] }) {
+export default function EventsTab({
+  events, mission, today,
+}: {
+  events: EventMonth[];
+  mission: MissionDay[];
+  today: string;
+}) {
   const [range, setRange] = useState<Range>('all');
   const rows = useMemo(() => eventRows(events), [events]);
   const years = useMemo(() => eventYears(rows), [rows]);
@@ -115,13 +123,16 @@ export default function EventsTab({ events }: { events: EventMonth[] }) {
 
   if (events.length === 0) {
     return (
-      <div className="card p-8 text-center">
+      <div className="space-y-8">
+        <div className="card p-8 text-center">
         <p className="text-sm text-ink-secondary">
           Nothing on the <code className="rounded bg-sunken px-1">events</code> tab yet.
           It expects a row per month labelled like{' '}
           <code className="rounded bg-sunken px-1">January, 2026</code>, with the
           month&apos;s realized total beside it.
         </p>
+        </div>
+        <MissionSection mission={mission} today={today} />
       </div>
     );
   }
@@ -235,6 +246,8 @@ export default function EventsTab({ events }: { events: EventMonth[] }) {
           </table>
         </div>
       </section>
+
+      <MissionSection mission={mission} today={today} />
     </div>
   );
 }

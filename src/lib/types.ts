@@ -142,6 +142,37 @@ export interface EventMonth {
   row: number;
 }
 
+/**
+ * One reading of the margin balance, taken every two weeks on a Monday.
+ *
+ * Margin is borrowed money, so this is a debt that grows on its own — the
+ * figure moves between readings whether or not anything is traded. That is why
+ * it is sampled on a schedule rather than logged per event: what matters is the
+ * level and which way it is heading, not any single transaction.
+ *
+ * Recorded as a positive number, the way a balance is: 12000 means $12,000
+ * borrowed. Zero means the margin is clear.
+ */
+export interface MarginReading {
+  date: string; // YYYY-MM-DD
+  marginCents: number;
+  row: number;
+}
+
+/**
+ * One day of the mission: earn at least $464 on event contracts, on at least
+ * 512 days, starting 7 August 2026.
+ *
+ * Logged daily and separately from the monthly `events` ledger, because the
+ * promise is made per day. A month that clears its total while three days fell
+ * short has not kept it, and a monthly figure can never tell you that.
+ */
+export interface MissionDay {
+  date: string; // YYYY-MM-DD
+  amountCents: number;
+  row: number;
+}
+
 export interface Config {
   monthlySpendTargetCents: number | null;
   annualSpendTargetCents: number | null;
@@ -172,6 +203,8 @@ export interface SheetData {
   premiumsAnoosha: PremiumMonth[];
   rolls: Roll[];
   events: EventMonth[];
+  margin: MarginReading[];
+  mission: MissionDay[];
   config: Config;
   problems: Problem[];
   fetchedAt: string; // ISO timestamp
