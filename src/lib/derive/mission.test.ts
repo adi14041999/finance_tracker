@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  missionCells, missionStatus,
-  MISSION_START, MISSION_END, MISSION_TARGET_DAYS, MISSION_BAR_CENTS,
-  MISSION_TARGET_CENTS, MISSION_OPENING_BALANCE_CENTS,
+  missionWeeks, currentWeek, missionStatus,
+  MISSION_START, MISSION_END, MISSION_RESERVE_DAY, MISSION_WEEKS, MISSION_DAYS,
+  MISSION_DAILY_CENTS, MISSION_TARGET_CENTS,
 } from './mission';
 import type { MissionDay } from '../types';
 
@@ -10,189 +10,229 @@ let row = 1;
 const day = (date: string, dollars: number): MissionDay =>
   ({ date, amountCents: Math.round(dollars * 100), row: row++ });
 
+const weeksOf = (days: MissionDay[], today: string) => missionWeeks(days, today);
 const status = (days: MissionDay[], today: string) =>
-  missionStatus(missionCells(days, today), today);
+  missionStatus(missionWeeks(days, today), today);
 
-describe('the mission constants', () => {
-  it('runs 512 days from 7 Aug 2026 to 31 Dec 2027 exactly', () => {
-    expect(MISSION_START).toBe('2026-08-07');
-    expect(MISSION_END).toBe('2027-12-31');
-    expect(MISSION_TARGET_DAYS).toBe(512);
+const dow = (date: string) => {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday, 1 = Monday
+};
+
+describe('the shape of the window', () => {
+  it('runs Mon 17 Aug 2026 to Sun 30 Dec 2029', () => {
+    expect(MISSION_START).toBe('2026-08-17');
+    expect(MISSION_END).toBe('2029-12-30');
+    expect(dow(MISSION_START)).toBe(1);
+    expect(dow(MISSION_END)).toBe(0);
   });
 
-  it('sets the bar at $464', () => {
-    expect(MISSION_BAR_CENTS).toBe(46_400);
+  it('holds 31 Dec 2029 back as a reserve, outside the mission', () => {
+    expect(MISSION_RESERVE_DAY).toBe('2029-12-31');
+    expect(MISSION_RESERVE_DAY > MISSION_END).toBe(true);
+    const last = weeksOf([], '2026-08-17')[MISSION_WEEKS - 1];
+    expect(last.endDate).toBe(MISSION_END);
+    expect(last.days.some((d) => d.date === MISSION_RESERVE_DAY)).toBe(false);
   });
 
-  it('is worth $237,568 at the bar', () => {
-    expect(MISSION_TARGET_DAYS * MISSION_BAR_CENTS).toBe(23_756_800);
+  it('is 1,232 days — exactly 176 whole weeks', () => {
+    expect(MISSION_DAYS).toBe(1232);
+    expect(MISSION_WEEKS).toBe(176);
+    expect(MISSION_DAYS % 7).toBe(0);
+    expect(MISSION_WEEKS * 7).toBe(MISSION_DAYS);
+  });
+
+  it('runs every week Monday to Sunday, all seven days long', () => {
+    for (const w of weeksOf([], '2026-08-17')) {
+      expect(dow(w.startDate)).toBe(1);
+      expect(dow(w.endDate)).toBe(0);
+      expect(w.dayCount).toBe(7);
+      expect(w.days).toHaveLength(7);
+    }
+  });
+
+  it('targets $315,392 — 1,232 days at $256', () => {
+    expect(MISSION_DAILY_CENTS).toBe(25_600);
+    expect(MISSION_TARGET_CENTS).toBe(31_539_200);
+    expect(MISSION_TARGET_CENTS).toBe(MISSION_DAYS * MISSION_DAILY_CENTS);
   });
 });
 
-describe('cells', () => {
-  it('always lays out all 512 days', () => {
-    expect(missionCells([], '2026-08-09')).toHaveLength(512);
+describe('the opening goal', () => {
+  it('is exactly $1,792 — seven days at $256, no rounding needed', () => {
+    const w = weeksOf([], '2026-08-17')[0];
+    expect(w.goalCents).toBe(179_200);
+    expect(w.perDayCents).toBe(MISSION_DAILY_CENTS);
   });
 
-  it('marks days past today as future, whatever is logged', () => {
-    const cells = missionCells([day('2026-08-09', 999)], '2026-08-07');
-    expect(cells[0].state).toBe('unlogged');
-    expect(cells[2].state).toBe('future');
+  it('projects every future week at today’s pace, not at zero', () => {
+    // A week two years out must not be handed the whole outstanding balance.
+    // Every unstarted week shows the same rate, scaled by its length.
+    const weeks = weeksOf([], '2026-08-17');
+    const far = weeks[175];
+    expect(far.goalCents).toBeLessThan(200_000);
+    expect(far.perDayCents).toBe(weeks[1].perDayCents);
+  });
+});
+
+describe('recalibration', () => {
+  it('lowers later weeks when a week beats its goal', () => {
+    const weeks = weeksOf([day('2026-08-17', 5000)], '2026-08-25'); // into week two
+    expect(weeks[0].earnedCents).toBe(500_000);
+    expect(weeks[0].state).toBe('met');
+    expect(weeks[1].goalCents).toBeLessThan(weeks[0].goalCents);
   });
 
-  it('clears at exactly $464, not a cent above', () => {
-    const cells = missionCells([day('2026-08-07', 464), day('2026-08-08', 463.99)], '2026-08-08');
-    expect(cells[0].state).toBe('cleared');
-    expect(cells[1].state).toBe('short');
+  it('raises later weeks when a week falls short', () => {
+    const weeks = weeksOf([day('2026-08-17', 100)], '2026-08-25');
+    expect(weeks[0].state).toBe('missed');
+    expect(weeks[1].goalCents).toBeGreaterThan(weeks[0].goalCents);
   });
 
-  it('treats a losing day as short, not as missing', () => {
-    expect(missionCells([day('2026-08-07', -200)], '2026-08-07')[0].state).toBe('short');
+  it('spreads the shortfall over days remaining, not weeks remaining', () => {
+    // Week one earns nothing; the $1,792 owed is spread across the 1,225 days
+    // that are left, then multiplied back up by this week's seven.
+    const weeks = weeksOf([], '2026-08-25');
+    expect(weeks[1].goalCents).toBe(Math.ceil((31_539_200 / 1225) * 7));
+  });
+
+  it('never lets a mid-week earning move the current week goal', () => {
+    const before = weeksOf([], '2026-08-19')[0].goalCents;
+    const after = weeksOf([day('2026-08-19', 900)], '2026-08-19')[0].goalCents;
+    expect(after).toBe(before);
+  });
+
+  it('drops later goals to zero once the target is passed', () => {
+    const weeks = weeksOf([day('2026-08-17', 400000)], '2026-08-25');
+    expect(weeks[1].goalCents).toBe(0);
+    expect(weeks[1].perDayCents).toBe(0);
+    expect(weeks[1].progress).toBeNull();
+  });
+
+  it('keeps the plan adding up to at least the target', () => {
+    const total = weeksOf([], '2026-08-17').reduce((a, w) => a + w.goalCents, 0);
+    expect(total).toBeGreaterThanOrEqual(MISSION_TARGET_CENTS);
+  });
+});
+
+describe('weeks and their days', () => {
+  it('orders days Monday first', () => {
+    const w = weeksOf([], '2026-08-17')[0];
+    expect(w.days[0].date).toBe('2026-08-17');
+    expect(w.days[0].dayOfWeek).toBe(1);
+    expect(w.days[6].date).toBe('2026-08-23');
+  });
+
+  it('separates a logged zero from a day with no row', () => {
+    const w = weeksOf([day('2026-08-17', 0)], '2026-08-18')[0];
+    expect(w.days[0].state).toBe('blank');
+    expect(w.days[1].state).toBe('unlogged');
+  });
+
+  it('marks days past today as future whatever is logged', () => {
+    const w = weeksOf([day('2026-08-22', 900)], '2026-08-18')[0];
+    expect(w.days[5].state).toBe('future');
+  });
+
+  it('sums a week from its days, losses included', () => {
+    const w = weeksOf([day('2026-08-17', 900), day('2026-08-18', -200)], '2026-08-23')[0];
+    expect(w.earnedCents).toBe(70_000);
+  });
+});
+
+describe('the current week', () => {
+  it('finds the week today sits in and what is left of it', () => {
+    const w = currentWeek(weeksOf([day('2026-08-17', 300)], '2026-08-19'), '2026-08-19')!;
+    expect(w.index).toBe(1);
+    expect(w.startDate).toBe('2026-08-17');
+    expect(w.endDate).toBe('2026-08-23');
+    expect(w.daysElapsed).toBe(3); // Mon, Tue, Wed
+    expect(w.daysLeft).toBe(5); // Wed through Sun
+    expect(w.remainingCents).toBe(179_200 - 30_000);
+  });
+
+  it('has elapsed and remaining both include today', () => {
+    const w = currentWeek(weeksOf([], '2026-08-20'), '2026-08-20')!;
+    expect(w.daysElapsed + w.daysLeft).toBe(8);
+  });
+
+  it('reads 1/7 gone on the Monday and 7/7 on the Sunday', () => {
+    expect(currentWeek(weeksOf([], '2026-08-17'), '2026-08-17')!.timeProgress)
+      .toBeCloseTo(1 / 7, 10);
+    expect(currentWeek(weeksOf([], '2026-08-23'), '2026-08-23')!.timeProgress).toBe(1);
+  });
+
+  it('is null before the start, and on the reserve day', () => {
+    expect(currentWeek(weeksOf([], '2026-08-16'), '2026-08-16')).toBeNull();
+    expect(currentWeek(weeksOf([], MISSION_RESERVE_DAY), MISSION_RESERVE_DAY)).toBeNull();
+  });
+});
+
+describe('the daily rate', () => {
+  it('does not move as the week is earned or as days pass', () => {
+    const flat = weeksOf([], '2026-08-17')[0].perDayCents;
+    expect(weeksOf([day('2026-08-17', 3000)], '2026-08-20')[0].perDayCents).toBe(flat);
+    expect(weeksOf([], '2026-08-22')[0].perDayCents).toBe(flat);
+  });
+
+  it('follows the goal when the goal recalibrates between weeks', () => {
+    const weeks = weeksOf([day('2026-08-17', 5000)], '2026-08-25');
+    expect(weeks[1].perDayCents).toBe(Math.ceil(weeks[1].goalCents / 7));
+    expect(weeks[1].perDayCents).toBeLessThan(weeks[0].perDayCents);
   });
 });
 
 describe('status', () => {
-  it('counts cleared, short and unlogged days apart', () => {
-    const s = status([day('2026-08-07', 500), day('2026-08-09', 100)], '2026-08-10');
-    expect(s.cleared).toBe(1);
-    expect(s.short).toBe(1);
-    expect(s.unlogged).toBe(2); // the 8th and the 10th
-    expect(s.daysElapsed).toBe(4);
+  it('tracks the long game against $315,392', () => {
+    const s = status([day('2026-08-17', 5000)], '2026-08-19');
+    expect(s.earnedCents).toBe(500_000);
+    expect(s.remainingCents).toBe(31_039_200);
+    expect(s.progress).toBeCloseTo(500_000 / 31_539_200, 10);
   });
 
-  it('scores days cleared, never dollars earned', () => {
-    // One enormous day does not buy back the three that fell short.
-    const s = status([
-      day('2026-08-07', 50000), day('2026-08-08', 1),
-      day('2026-08-09', 1), day('2026-08-10', 1),
-    ], '2026-08-10');
-    expect(s.cleared).toBe(1);
-    expect(s.progress).toBeCloseTo(1 / 512, 10);
-    expect(s.earnedCents).toBe(5_000_300);
+  it('opens at $1,792 a week', () => {
+    expect(status([], '2026-08-17').openingWeeklyCents).toBe(179_200);
   });
 
-  it('breaks a streak on an unlogged day as well as a short one', () => {
-    const s = status([day('2026-08-07', 500), day('2026-08-09', 500)], '2026-08-09');
-    expect(s.longestStreak).toBe(1);
-    expect(s.currentStreak).toBe(1);
+  it('counts weeks met and missed once they close', () => {
+    const s = status([day('2026-08-17', 5000), day('2026-08-24', 1)], '2026-09-01');
+    expect(s.weeksElapsed).toBe(2);
+    expect(s.weeksMet).toBe(1);
+    expect(s.weeksMissed).toBe(1);
   });
 
-  it('tracks the running and longest streak separately', () => {
-    const s = status([
-      day('2026-08-07', 500), day('2026-08-08', 500), day('2026-08-09', 500),
-      day('2026-08-10', 10), day('2026-08-11', 500),
-    ], '2026-08-11');
-    expect(s.longestStreak).toBe(3);
-    expect(s.currentStreak).toBe(1);
+  it('does not judge the week in progress', () => {
+    const s = status([], '2026-08-19');
+    expect(s.weeksElapsed).toBe(0);
+    expect(s.weeksMissed).toBe(0);
+    expect(s.currentWeekIndex).toBe(1);
   });
 
-  it('starts with a clean sweep still on', () => {
-    const s = status([], '2026-08-07');
-    expect(s.perfectStillOn).toBe(true);
-    expect(s.maxPossible).toBe(512);
-    expect(s.stillNeeded).toBe(512);
+  it('tracks the window from day one to day 1,232', () => {
+    expect(status([], '2026-08-17').daysElapsed).toBe(1);
+    expect(status([], MISSION_END).daysElapsed).toBe(1232);
+    expect(status([], MISSION_END).timeProgress).toBe(1);
   });
 
-  it('lowers the best possible finish by each day that falls short', () => {
-    // The window is exactly 512 days, so a short day cannot be made up. What
-    // it costs is one off the ceiling, not the whole mission.
-    const s = status([day('2026-08-07', 10), day('2026-08-08', 20)], '2026-08-08');
-    expect(s.short).toBe(2);
-    expect(s.maxPossible).toBe(510);
-    expect(s.perfectStillOn).toBe(false);
+  it('is finished on the reserve day', () => {
+    const s = status([], MISSION_RESERVE_DAY);
+    expect(s.finished).toBe(true);
+    expect(s.timeProgress).toBe(1);
   });
 
-  it('does not count an unlogged day against the ceiling', () => {
-    // A day with no row yet can still be filled in; a short day cannot be undone.
-    const s = status([day('2026-08-07', 500)], '2026-08-09');
-    expect(s.unlogged).toBe(2);
-    expect(s.maxPossible).toBe(512);
-    expect(s.perfectStillOn).toBe(true);
-  });
-
-  it('has not started the day before', () => {
-    const s = status([], '2026-08-06');
+  it('is all zeros rather than NaN before the start', () => {
+    const s = status([], '2026-08-16');
     expect(s.started).toBe(false);
-    expect(s.daysElapsed).toBe(0);
-    expect(s.daysRemaining).toBe(512);
-  });
-
-  it('caps elapsed days at the window, past the end', () => {
-    const s = status([], '2028-06-01');
-    expect(s.daysElapsed).toBe(512);
-    expect(s.daysRemaining).toBe(0);
-  });
-
-  it('is all zeros rather than NaN with nothing logged', () => {
-    const s = status([], '2026-08-07');
     expect(s.earnedCents).toBe(0);
-    expect(s.bestCents).toBeNull();
     expect(s.progress).toBe(0);
-  });
-});
-
-describe('the dollar goal', () => {
-  it('is 512 x $464 = $237,568', () => {
-    expect(MISSION_TARGET_CENTS).toBe(23_756_800);
-    expect(MISSION_TARGET_CENTS).toBe(MISSION_TARGET_DAYS * MISSION_BAR_CENTS);
-  });
-
-  it('tracks the running total against it', () => {
-    const s = status([day('2026-08-07', 1000), day('2026-08-08', 1000)], '2026-08-08');
-    expect(s.earnedCents).toBe(200_000);
-    expect(s.moneyRemainingCents).toBe(23_556_800);
-    expect(s.moneyProgress).toBeCloseTo(200_000 / 23_756_800, 10);
-    expect(s.moneyAchieved).toBe(false);
+    expect(s.timeProgress).toBe(0);
+    expect(s.currentWeekIndex).toBeNull();
   });
 
   it('goes past 100% rather than clamping', () => {
-    // Days can never exceed 512, but dollars can — and a clamped bar would
-    // hide the fact that the goal was beaten.
-    const s = status([day('2026-08-07', 300000)], '2026-08-07');
-    expect(s.moneyProgress).toBeGreaterThan(1);
-    expect(s.moneyAchieved).toBe(true);
-    expect(s.moneyRemainingCents).toBe(0);
-  });
-
-  it('counts money from short days too', () => {
-    // A $100 day fails the promise but the $100 is still earned.
-    const s = status([day('2026-08-07', 100)], '2026-08-07');
-    expect(s.cleared).toBe(0);
-    expect(s.earnedCents).toBe(10_000);
-  });
-});
-
-describe('the opening balance', () => {
-  it('records August 2026 at -$22,800', () => {
-    expect(MISSION_OPENING_BALANCE_CENTS).toBe(-2_280_000);
-  });
-
-  it('never touches the mission arithmetic', () => {
-    // Context only. Earned, progress and the target are all counted from zero
-    // on day one — netting the hole into them would make every figure mean two
-    // things at once.
-    const s = status([day('2026-08-07', 464)], '2026-08-07');
-    expect(s.earnedCents).toBe(46_400);
-    expect(s.moneyRemainingCents).toBe(MISSION_TARGET_CENTS - 46_400);
-  });
-});
-
-describe('days past', () => {
-  it('advances with the calendar, not with days cleared', () => {
-    // Four days gone, one of them cleared. Time is 4/512; the score is 1/512.
-    const s = status([day('2026-08-07', 500), day('2026-08-08', 1)], '2026-08-10');
-    expect(s.daysElapsed).toBe(4);
-    expect(s.timeProgress).toBeCloseTo(4 / 512, 10);
-    expect(s.cleared).toBe(1);
-    expect(s.progress).toBeCloseTo(1 / 512, 10);
-  });
-
-  it('is zero before the mission starts', () => {
-    expect(status([], '2026-08-06').timeProgress).toBe(0);
-  });
-
-  it('reaches exactly 1 on the last day and stays there', () => {
-    expect(status([], '2027-12-31').timeProgress).toBe(1);
-    expect(status([], '2028-05-01').timeProgress).toBe(1);
+    const s = status([day('2026-08-17', 400000)], '2026-08-19');
+    expect(s.progress).toBeGreaterThan(1);
+    expect(s.achieved).toBe(true);
+    expect(s.remainingCents).toBe(0);
   });
 });

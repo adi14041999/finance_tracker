@@ -19,8 +19,15 @@ import { addDays, daysBetween } from '../dates';
 
 export { addDays, daysBetween };
 
-/** The first Monday of tracking. Every reading is due a week after the last. */
-export const MARGIN_ANCHOR = '2026-08-03';
+/**
+ * The first Monday of tracking: 17 August 2026. Every reading is due a week
+ * after the last.
+ *
+ * Deliberately the same Monday the mission opens, so a margin reading and a
+ * mission week start always fall on the same day. Two weekly rhythms a fortnight
+ * out of phase would be two things to remember instead of one.
+ */
+export const MARGIN_ANCHOR = '2026-08-17';
 export const MARGIN_INTERVAL_DAYS = 7;
 
 export interface MarginRow extends MarginReading {

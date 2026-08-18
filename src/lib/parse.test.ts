@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseSheet, type RawSheet } from './parse';
 import { sampleSheet } from './fixtures';
+import { rollRows } from './derive/rolls';
 
 const META = { fetchedAt: '2026-07-31T00:00:00.000Z', source: 'sample' as const };
 
@@ -543,5 +544,70 @@ describe('the sample sheet parses cleanly', () => {
     const b = parseSheet(sampleSheet('2026-08-01'), META);
     expect(b.transactions.length).toBe(a.transactions.length);
     expect(b.positions).toEqual(a.positions);
+  });
+});
+
+describe('buy-to-close rows on the rolls tab', () => {
+  const HDR = ['ticker', 'rolled at (MM/DD/YY)', 'rolled from', 'rolled to', 'cost',
+    'number of contracts', 'total cost', 'recovered'];
+  const g = (rows: unknown[][]) => parseSheet(sheet({ rolls: [HDR, ...rows] }), META);
+
+  it('reads a row whose strike columns say "buy to close"', () => {
+    const { rolls, problems } = g([
+      ['KO', '11/15/25', 'buy to close', 'buy to close', 305.6, 2, 611.2, 120],
+    ]);
+    expect(rolls[0].kind).toBe('close');
+    expect(rolls[0].strikeFrom).toBeNull();
+    expect(rolls[0].strikeTo).toBeNull();
+    expect(rolls[0].note).toBe('buy to close');
+    // The money still counts — a close costs and recovers like a roll.
+    expect(rolls[0].totalCostCents).toBe(61_120);
+    expect(rolls[0].recoveredCents).toBe(12_000);
+    expect(problems).toEqual([]);
+  });
+
+  it('never coerces a note to a strike of zero', () => {
+    // Zero is a real strike and would draw a real, wrong figure.
+    const { rolls } = g([['KO', '11/15/25', 'closed early', '', 100, 1, 100, 0]]);
+    expect(rolls[0].strikeFrom).not.toBe(0);
+    expect(rolls[0].strikeFrom).toBeNull();
+  });
+
+  it('keeps a genuine roll as a roll', () => {
+    const { rolls } = g([['AAPL', '03/21/26', 190, 215, 1240.5, 2, 2481, 1655.2]]);
+    expect(rolls[0].kind).toBe('roll');
+    expect(rolls[0].strikeFrom).toBe(190);
+    expect(rolls[0].strikeTo).toBe(215);
+    expect(rolls[0].note).toBe('');
+  });
+
+  it('reads a strike closed out — a number in "from", a note in "to"', () => {
+    // The real shape: CAR closed at 180. No new strike means the position
+    // ended rather than moved, so it is a close — and the 180 is kept, because
+    // which strike was bought back is worth knowing.
+    const { rolls, problems } = g([['CAR', '03/21/26', 180, 'buy to close', 500, 1, 500, 100]]);
+    expect(rolls[0].kind).toBe('close');
+    expect(rolls[0].strikeFrom).toBe(180);
+    expect(rolls[0].strikeTo).toBeNull();
+    expect(rolls[0].note).toBe('buy to close');
+    expect(problems).toEqual([]);
+  });
+
+  it('is the missing "rolled to" that makes it a close, not both being blank', () => {
+    const { rolls } = g([
+      ['CAR', '03/21/26', 180, 'buy to close', 100, 1, 100, 0],
+      ['KO', '03/21/26', 'buy to close', 'buy to close', 100, 1, 100, 0],
+    ]);
+    expect(rolls.every((r) => r.kind === 'close')).toBe(true);
+  });
+
+  it('carries a strike distance only when both ends are numbers', () => {
+    const { rolls } = g([
+      ['AAPL', '03/21/26', 190, 215, 100, 1, 100, 0],
+      ['KO', '03/21/26', 'buy to close', 'buy to close', 100, 1, 100, 0],
+    ]);
+    const rows = rollRows(rolls);
+    expect(rows.find((r) => r.ticker === 'AAPL')!.strikeMoved).toBe(25);
+    expect(rows.find((r) => r.ticker === 'KO')!.strikeMoved).toBeNull();
   });
 });

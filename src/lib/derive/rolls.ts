@@ -17,8 +17,8 @@ export interface RollRow extends Roll {
   /** recovered / cost, 0..1+. Null when a roll somehow cost nothing. */
   pctRecovered: number | null;
   remainingCents: number;
-  /** Strike distance bought by the roll, in points. */
-  strikeMoved: number;
+  /** Strike distance bought by the roll, in points. Null on a buy-to-close. */
+  strikeMoved: number | null;
 }
 
 export interface RollSummary {
@@ -48,7 +48,9 @@ export function rollRows(rolls: Roll[]): RollRow[] {
     ...r,
     pctRecovered: r.totalCostCents > 0 ? r.recoveredCents / r.totalCostCents : null,
     remainingCents: r.totalCostCents - r.recoveredCents,
-    strikeMoved: r.strikeTo - r.strikeFrom,
+    strikeMoved: r.strikeFrom !== null && r.strikeTo !== null
+      ? r.strikeTo - r.strikeFrom
+      : null,
   }));
 }
 

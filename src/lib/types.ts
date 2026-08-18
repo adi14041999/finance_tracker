@@ -116,8 +116,20 @@ export interface PremiumMonth {
 export interface Roll {
   ticker: string;
   date: string; // YYYY-MM-DD
-  strikeFrom: number;
-  strikeTo: number;
+  /**
+   * What the row actually is.
+   *
+   * A `roll` moves a short call from one strike to a higher one. A `close` is
+   * bought back outright and not rewritten — the strike columns hold a note
+   * like "buy to close" instead of numbers. Both cost money and both get
+   * earned back, so they share this ledger; only the strike columns differ.
+   */
+  kind: 'roll' | 'close';
+  /** Null on a close, where there is no strike to record. */
+  strikeFrom: number | null;
+  strikeTo: number | null;
+  /** Whatever the strike columns said when they weren't numbers. */
+  note: string;
   costCents: number; // per contract
   contracts: number;
   totalCostCents: number;

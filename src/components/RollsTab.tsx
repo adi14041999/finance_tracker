@@ -21,9 +21,14 @@ function prettyDate(date: string): string {
   return `${names[Number(m) - 1]} ${Number(d)}, ${y}`;
 }
 
-/** Strikes are plain numbers, and 37.5 should not print as 37.50. */
-function strike(n: number): string {
-  return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+/**
+ * Strikes are plain numbers, and 37.5 should not print as 37.50.
+ *
+ * Null means the row has no strike — a buy-to-close — and prints as a dash
+ * rather than the "undefined" or stray 0 that coercion used to produce.
+ */
+function strike(n: number | null): string {
+  return n === null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 
 /**
@@ -248,11 +253,33 @@ export default function RollsTab({ rolls }: { rolls: Roll[] }) {
                 <tr key={`${r.ticker}-${r.date}-${r.row}`} className="border-b border-hairline">
                   <td className="py-2 pr-3 font-medium">{r.ticker}</td>
                   <td className="py-2 pr-3 text-ink-secondary">{prettyDate(r.date)}</td>
-                  <td className="tabular py-2 pr-3 text-ink-secondary">
-                    {strike(r.strikeFrom)} → {strike(r.strikeTo)}
-                    <div className="text-xs text-ink-muted">
-                      +{strike(r.strikeMoved)} points
-                    </div>
+                  <td className="py-2 pr-3 text-ink-secondary">
+                    {r.kind === 'close' ? (
+                      <>
+                        <span className="rounded bg-sunken px-1.5 py-0.5 text-xs">
+                          {/* Naming the strike that was closed, when the sheet
+                              recorded one. "Closed 180" says more than "buy to
+                              close" and costs no more room. */}
+                          {r.strikeFrom !== null
+                            ? <>Closed <span className="tabular">{strike(r.strikeFrom)}</span></>
+                            : 'Buy to close'}
+                        </span>
+                        {r.note && r.note.toLowerCase() !== 'buy to close' && (
+                          <div className="mt-0.5 text-xs text-ink-muted">{r.note}</div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="tabular">
+                          {strike(r.strikeFrom)} → {strike(r.strikeTo)}
+                        </span>
+                        {r.strikeMoved !== null && (
+                          <div className="tabular text-xs text-ink-muted">
+                            +{strike(r.strikeMoved)} points
+                          </div>
+                        )}
+                      </>
+                    )}
                   </td>
                   <td className="tabular py-2 pr-3 text-right text-ink-secondary">
                     {r.contracts}

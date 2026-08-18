@@ -11,7 +11,9 @@ function roll(
 ): Roll {
   const costCents = Math.round(cost * 100);
   return {
-    ticker, date, strikeFrom: from, strikeTo: to,
+    ticker, date,
+    kind: 'roll' as const, note: '',
+    strikeFrom: from, strikeTo: to,
     costCents, contracts,
     totalCostCents: Math.round(costCents * contracts),
     recoveredCents: Math.round(recovered * 100),
@@ -186,5 +188,39 @@ describe('reconciles against the real sheet', () => {
 
   it('has nothing cleared yet', () => {
     expect(s.clearedCount).toBe(0);
+  });
+});
+
+describe('buy-to-close rows', () => {
+  /** A close: no strikes, a note instead. */
+  const close = (ticker: string, date: string, cost: number, recovered: number): Roll => ({
+    ticker, date, kind: 'close', note: 'buy to close',
+    strikeFrom: null, strikeTo: null,
+    costCents: Math.round(cost * 100), contracts: 1,
+    totalCostCents: Math.round(cost * 100),
+    recoveredCents: Math.round(recovered * 100),
+    row: row++,
+  });
+
+  it('has no strike distance', () => {
+    const [r] = rollRows([close('KO', '2026-03-21', 300, 100)]);
+    expect(r.strikeMoved).toBeNull();
+  });
+
+  it('still carries cost, recovery and percentage like a roll', () => {
+    const [r] = rollRows([close('KO', '2026-03-21', 400, 100)]);
+    expect(r.totalCostCents).toBe(40_000);
+    expect(r.remainingCents).toBe(30_000);
+    expect(r.pctRecovered).toBeCloseTo(0.25, 10);
+  });
+
+  it('counts into the summary alongside rolls', () => {
+    const s = rollSummary(rollRows([
+      roll('A', '2026-03-21', 10, 20, 100, 1, 50),
+      close('KO', '2026-03-21', 100, 50),
+    ]));
+    expect(s.rollCount).toBe(2);
+    expect(s.totalCostCents).toBe(20_000);
+    expect(s.recoveredCents).toBe(10_000);
   });
 });

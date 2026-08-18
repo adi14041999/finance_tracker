@@ -114,18 +114,12 @@ export default function MarginTab({
             Add a row to the <code className="rounded bg-sunken px-1">margin</code> tab
             every Monday with the balance you owe. Two columns:{' '}
             <code className="rounded bg-sunken px-1">date</code> as{' '}
-            <code className="rounded bg-sunken px-1">2026-08-03</code>, and{' '}
+            <code className="rounded bg-sunken px-1">2026-08-17</code>, and{' '}
             <code className="rounded bg-sunken px-1">margin</code> as a positive amount —{' '}
             <span className="tabular">12000</span> means $12,000 borrowed,{' '}
             <span className="tabular">0</span> means clear.
           </p>
-          <p className="mt-4 text-sm">
-            <span className="font-medium">First reading {due}.</span>{' '}
-            <span className="text-ink-muted">
-              The next is due a week after each one you take, so logging one a day late
-              shifts the following one rather than leaving you behind.
-            </span>
-          </p>
+          <p className="mt-4 text-sm font-medium">First reading {due}.</p>
         </div>
       </div>
     );

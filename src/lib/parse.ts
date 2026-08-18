@@ -520,11 +520,34 @@ function parseRolls(rows: RawRows, problems: Problem[]): Roll[] {
       r.problem(n, 'recovered', `${ticker} has recovered more than the roll cost. Anything past the cost is profit, not recovery — worth checking the figure.`, 'warning');
     }
 
+    // What makes a row a CLOSE is the absence of a "rolled to": a roll moves a
+    // short call to a new strike, so no new strike means the position ended
+    // rather than moved. "rolled from" is often still filled in on a close —
+    // it is the strike that was bought back, and worth keeping.
+    //
+    // Anything non-numeric becomes a note rather than being coerced to zero.
+    // Zero is a real strike and would draw a real, wrong figure.
+    const rawFrom = r.raw(row, 'rolled from');
+    const rawTo = r.raw(row, 'rolled to');
+    const numeric = (v: unknown): number | null => {
+      const text = String(v ?? '').trim();
+      if (text === '') return null;
+      const n = Number(text);
+      return Number.isFinite(n) ? n : null;
+    };
+    const strikeFrom = numeric(rawFrom);
+    const strikeTo = numeric(rawTo);
+    const kind = strikeTo === null ? ('close' as const) : ('roll' as const);
+
     out.push({
       ticker,
       date,
-      strikeFrom: Number(r.raw(row, 'rolled from')) || 0,
-      strikeTo: Number(r.raw(row, 'rolled to')) || 0,
+      kind,
+      strikeFrom,
+      strikeTo,
+      // Whatever the "rolled to" cell actually said, so a note other than the
+      // usual "buy to close" survives to the page.
+      note: kind === 'close' ? r.text(row, 'rolled to') : '',
       costCents,
       contracts,
       totalCostCents,

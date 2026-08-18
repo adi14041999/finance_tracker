@@ -240,6 +240,7 @@ export function sampleSheet(today: string): RawSheet {
       ['AAPL', '03/21/26', 190, 215, 1240.5, 2, 2481, 1655.2],
       ['ORCL', '03/21/26', 140, 165, 880.25, 1, 880.25, 880.25],
       ['DIS', '11/15/25', 105, 125, 610.4, 3, 1831.2, 402.6],
+      ['KO', '11/15/25', 62.5, 'buy to close', 305.6, 2, 611.2, 120],
     ],
     events: [
       ['Month', 'Total', 'Realized profit & loss YTD'],
@@ -260,10 +261,10 @@ export function sampleSheet(today: string): RawSheet {
     ],
     mission: [
       ['date', 'amount'],
-      ['2026-08-07', 512],
-      ['2026-08-08', 480],
-      ['2026-08-09', 96],
-      ['2026-08-10', 640],
+      ['2026-08-17', 310],
+      ['2026-08-18', 0],
+      ['2026-08-19', 420],
+      ['2026-08-20', 185],
     ],
     config: [
       ['key', 'value', 'description'],

@@ -89,7 +89,7 @@ describe('summary', () => {
 
 describe('schedule', () => {
   it('points at the anchor before tracking starts', () => {
-    const s = marginSchedule([], '2026-08-02');
+    const s = marginSchedule([], '2026-08-16');
     expect(s.nextDue).toBe(MARGIN_ANCHOR);
     expect(s.daysUntil).toBe(1);
     expect(s.notStarted).toBe(true);
@@ -97,7 +97,7 @@ describe('schedule', () => {
   });
 
   it('is overdue once the anchor has passed with nothing recorded', () => {
-    const s = marginSchedule([], '2026-08-10');
+    const s = marginSchedule([], '2026-08-24');
     expect(s.overdue).toBe(true);
     expect(s.daysUntil).toBe(-7);
   });
@@ -126,7 +126,7 @@ describe('schedule', () => {
 });
 
 describe('the tracking cadence itself', () => {
-  it('starts on Monday 3 August 2026', () => {
+  it('starts on Monday 17 August 2026, the day the mission opens', () => {
     const [y, m, d] = MARGIN_ANCHOR.split('-').map(Number);
     expect(new Date(Date.UTC(y, m - 1, d)).getUTCDay()).toBe(1); // 1 = Monday
   });
@@ -138,5 +138,16 @@ describe('the tracking cadence itself', () => {
       expect(new Date(Date.UTC(y, m - 1, d)).getUTCDay()).toBe(1);
       date = addDays(date, 7);
     }
+  });
+});
+
+describe('the anchor', () => {
+  it('is a Monday', () => {
+    const [y, m, d] = MARGIN_ANCHOR.split('-').map(Number);
+    expect(new Date(Date.UTC(y, m - 1, d)).getUTCDay()).toBe(1);
+  });
+
+  it('shares the mission start date, so both weekly rhythms land together', () => {
+    expect(MARGIN_ANCHOR).toBe('2026-08-17');
   });
 });
