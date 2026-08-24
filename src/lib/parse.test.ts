@@ -53,6 +53,9 @@ function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
     mission: [
       ['date', 'amount'],
     ],
+    epl: [
+      ['fixture', 'date', 'amount'],
+    ],
     config: [
       ['key', 'value', 'description'],
       ['monthly_spend_target', 5000, ''],
@@ -527,7 +530,7 @@ describe('the sample sheet parses cleanly', () => {
     expect(raw.transactions[0]).toEqual(['date', 'description', 'category', 'amount']);
   });
 
-  it('fills every tab the app reads', () => {
+  it('fills every tab the sample dashboard actually shows', () => {
     const data = parseSheet(sampleSheet('2026-08-01'), META);
     expect(data.transactions.length).toBeGreaterThan(0);
     expect(data.balances.length).toBeGreaterThan(0);
@@ -536,7 +539,18 @@ describe('the sample sheet parses cleanly', () => {
     expect(data.premiums.length).toBeGreaterThan(0);
     expect(data.premiumsAnoosha.length).toBeGreaterThan(0);
     expect(data.rolls.length).toBeGreaterThan(0);
-    expect(data.events.length).toBeGreaterThan(0);
+  });
+
+  it('invents nothing for the Event contracts page, which sample mode hides', () => {
+    // The tab is filtered out under --sample because it carries the missions,
+    // and a fabricated commitment is not the same harmless thing as a
+    // fabricated grocery bill. Leaving invented rows sitting behind a hidden
+    // page would be waiting to leak into a screenshot.
+    const data = parseSheet(sampleSheet('2026-08-01'), META);
+    expect(data.events).toEqual([]);
+    expect(data.mission).toEqual([]);
+    expect(data.epl).toEqual([]);
+    expect(data.problems).toEqual([]);
   });
 
   it('is deterministic, so the demo never shifts under you', () => {
@@ -609,5 +623,92 @@ describe('buy-to-close rows on the rolls tab', () => {
     const rows = rollRows(rolls);
     expect(rows.find((r) => r.ticker === 'AAPL')!.strikeMoved).toBe(25);
     expect(rows.find((r) => r.ticker === 'KO')!.strikeMoved).toBeNull();
+  });
+});
+
+describe('the epl fixture list', () => {
+  const HDR = ['fixture', 'date', 'amount'];
+  const g = (rows: unknown[][]) => parseSheet(sheet({ epl: [HDR, ...rows] }), META);
+
+  it('reads a fixture, its date and what it earned', () => {
+    const { epl, problems } = g([['Brentford v Fulham', '2026-08-15', 72]]);
+    expect(epl[0].fixture).toBe('Brentford v Fulham');
+    expect(epl[0].date).toBe('2026-08-15');
+    expect(epl[0].amountCents).toBe(7_200);
+    expect(epl[0].index).toBe(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('leaves an unplayed fixture null rather than zero', () => {
+    // Zero is a played game that brought nothing. Blank is a game still to come.
+    const { epl, problems } = g([
+      ['A v B', '2026-08-15', 0],
+      ['C v D', '2026-08-22', ''],
+    ]);
+    expect(epl[0].amountCents).toBe(0);
+    expect(epl[1].amountCents).toBeNull();
+    expect(problems).toEqual([]);
+  });
+
+  it('keeps sheet order, since that is the order of the season', () => {
+    // Deliberately out of date order — the list is the fixture list, not a log.
+    const { epl } = g([
+      ['Later game', '2026-12-01', ''],
+      ['Earlier game', '2026-08-15', 50],
+    ]);
+    expect(epl.map((f) => f.fixture)).toEqual(['Later game', 'Earlier game']);
+    expect(epl.map((f) => f.index)).toEqual([1, 2]);
+  });
+
+  it('works without a date column at all', () => {
+    const data = parseSheet(sheet({ epl: [['fixture', 'amount'], ['A v B', 50]] }), META);
+    expect(data.epl[0].date).toBeNull();
+    expect(data.epl[0].amountCents).toBe(5_000);
+    expect(data.problems).toEqual([]);
+  });
+
+  it('skips spare rows with no fixture named', () => {
+    const { epl, problems } = g([['A v B', '2026-08-15', 50], ['', '', '']]);
+    expect(epl).toHaveLength(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('warns on an unreadable amount and treats the game as unplayed', () => {
+    const { epl, problems } = g([['A v B', '2026-08-15', 'tbd']]);
+    expect(epl[0].amountCents).toBeNull();
+    expect(problems[0].severity).toBe('warning');
+    expect(problems[0].message).toContain('A v B');
+  });
+});
+
+describe('the sample household', () => {
+  /** Net worth for one month: assets minus debts. */
+  function netWorth(month: string) {
+    const data = parseSheet(sampleSheet('2026-08-15'), META);
+    const klass = new Map(data.accounts.map((a) => [a.accountId, a.klass]));
+    return data.balances
+      .filter((b) => b.month === month)
+      .reduce((a, b) => a + (klass.get(b.accountId) === 'liability' ? -b.balanceCents : b.balanceCents), 0);
+  }
+
+  it('keeps net worth between $150k and $200k in every month shown', () => {
+    // The generator uses seeded noise, so this is deterministic — but a change
+    // to the drift or the wobble could silently walk it out of the band, and
+    // the whole point of the sample figures is that they look like a plausible
+    // household rather than whatever the arithmetic happened to produce.
+    const data = parseSheet(sampleSheet('2026-08-15'), META);
+    const months = [...new Set(data.balances.map((b) => b.month))];
+    expect(months.length).toBeGreaterThan(1);
+    for (const m of months) {
+      const net = netWorth(m);
+      expect(net).toBeGreaterThanOrEqual(15_000_000);
+      expect(net).toBeLessThanOrEqual(20_000_000);
+    }
+  });
+
+  it('trends upward across the window rather than wandering', () => {
+    const data = parseSheet(sampleSheet('2026-08-15'), META);
+    const months = [...new Set(data.balances.map((b) => b.month))].sort();
+    expect(netWorth(months[months.length - 1])).toBeGreaterThan(netWorth(months[0]));
   });
 });

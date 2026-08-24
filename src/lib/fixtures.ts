@@ -184,14 +184,19 @@ export function sampleSheet(today: string): RawSheet {
   const sortedTransactions = [txHeader, ...txBody];
 
   // Balances: a plausible upward drift with a wobble, debts shrinking.
+  //
+  // Sized so net worth sits between $150k and $200k across every month shown.
+  // Not a number picked to flatter anyone — it is simply a household big enough
+  // for the charts to have some range in them, and far enough from any real
+  // ledger that the two could never be confused. A test pins the band.
   const balances: unknown[][] = [['date', 'account_id', 'balance']];
   const start: Record<string, number> = {
-    chk_main: 3150, sav_hys: 8600, brk_rh: 19400,
-    ret_401k: 27300, cc_amex: 740, loan_car: 5900,
+    chk_main: 11900, sav_hys: 32400, brk_rh: 52000,
+    ret_401k: 66000, cc_amex: 1850, loan_car: 9600,
   };
   const drift: Record<string, number> = {
-    chk_main: 60, sav_hys: 310, brk_rh: 540,
-    ret_401k: 420, cc_amex: -15, loan_car: -180,
+    chk_main: 150, sav_hys: 800, brk_rh: 1200,
+    ret_401k: 1000, cc_amex: -35, loan_car: -260,
   };
 
   months.forEach((month, i) => {
@@ -200,7 +205,7 @@ export function sampleSheet(today: string): RawSheet {
     const day = isCurrent ? Math.max(1, Number(today.slice(8, 10))) : dim;
 
     for (const [accountId, base] of Object.entries(start)) {
-      const wobble = (random() - 0.5) * (accountId === 'brk_rh' ? 900 : 220);
+      const wobble = (random() - 0.5) * (accountId === 'brk_rh' ? 2600 : 500);
       const value = Math.max(50, base + drift[accountId] * i + wobble);
       balances.push([
         `${month}-${String(day).padStart(2, '0')}`,
@@ -244,12 +249,6 @@ export function sampleSheet(today: string): RawSheet {
     ],
     events: [
       ['Month', 'Total', 'Realized profit & loss YTD'],
-      ['January, 2026', 240, 240],
-      ['February, 2026', -1310, -1070],
-      ['March, 2026', 0, -1070],
-      ['April, 2026', 815, -255],
-      ['May, 2026', -420, -675],
-      ['June, 2026', 1960, 1285],
     ],
     margin: [
       ['date', 'margin'],
@@ -261,10 +260,9 @@ export function sampleSheet(today: string): RawSheet {
     ],
     mission: [
       ['date', 'amount'],
-      ['2026-08-17', 310],
-      ['2026-08-18', 0],
-      ['2026-08-19', 420],
-      ['2026-08-20', 185],
+    ],
+    epl: [
+      ['fixture', 'date', 'amount'],
     ],
     config: [
       ['key', 'value', 'description'],

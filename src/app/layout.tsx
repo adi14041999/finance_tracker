@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Nav from '@/components/Nav';
 import DataSource from '@/components/DataSource';
-import { load, isConfigured } from '@/lib/load';
+import { load, dataMode } from '@/lib/load';
 
 export const metadata: Metadata = {
   title: 'Finance Tracker',
@@ -28,7 +28,7 @@ export default async function RootLayout({
               <span className="text-sm font-semibold tracking-tight">Finance</span>
               <Nav />
             </div>
-            <DataSource source={data.source} configured={isConfigured()} />
+            <DataSource mode={dataMode()} />
           </div>
         </header>
 
@@ -36,9 +36,9 @@ export default async function RootLayout({
           <div className="border-b border-hairline bg-warning/10">
             <div className="mx-auto max-w-6xl px-6 py-2 text-sm text-ink-secondary">
               <strong className="text-ink">Sample data.</strong> These numbers are
-              invented so you can see the app working. Switch to{' '}
-              <strong className="text-ink">Live sheet</strong> at the top right once your
-              credentials are set up.
+              invented so you can see the app working. Restart with{' '}
+              <code className="rounded bg-sunken px-1">npm run dev -- --live</code> to read
+              your own sheet.
             </div>
           </div>
         )}

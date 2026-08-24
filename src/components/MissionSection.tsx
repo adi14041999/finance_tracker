@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { MissionDay } from '@/lib/types';
+import type { EplFixture, MissionDay } from '@/lib/types';
+import EplSection from './EplSection';
 import {
   missionWeeks, currentWeek, missionStatus,
   MISSION_TARGET_CENTS, MISSION_DAILY_CENTS, MISSION_RESERVE_DAY,
@@ -57,35 +58,85 @@ function prettyDate(date: string, withYear = false): string {
 }
 
 /**
- * The seven days of the current week.
+ * The seven days of the current week, diverging around a zero axis.
  *
- * Bars rather than a row of squares, because within one week the question is
- * not "did it clear a bar" — there is no per-day bar any more — but "how much
- * did each day bring". Height carries that; a square could not.
+ * Bars rather than squares, because within one week the question is not "did it
+ * clear a bar" but "how much did each day bring". Height carries that; a square
+ * could not.
+ *
+ * A losing day now hangs BELOW the axis in the loss colour rather than drawing
+ * nothing. Clamping it to zero was the worst of both worlds: it looked exactly
+ * like a day that earned nothing, when it is the opposite — a day that went
+ * backwards and made the rest of the week harder.
+ *
+ * The axis floats rather than sitting at the midpoint. It is placed at the
+ * position zero actually occupies in the week's range, so a week of small
+ * losses and one big win does not draw the losses half a card tall.
  */
-function WeekDays({ days, maxCents }: { days: MissionDayCell[]; maxCents: number }) {
+function WeekDays({ days }: { days: MissionDayCell[] }) {
+  const values = days.map((d) => d.amountCents ?? 0);
+  const hi = Math.max(0, ...values);
+  const lo = Math.min(0, ...values);
+  const span = hi - lo || 1;
+  // Distance from the top of the plot to the zero line, as a percentage.
+  const zeroPct = (hi / span) * 100;
+
+  const H = 80; // px
+
   return (
     <div className="grid grid-cols-7 gap-2">
       {days.map((d) => {
-        const h = d.amountCents && d.amountCents > 0
-          ? Math.max(3, (d.amountCents / maxCents) * 100)
-          : 0;
+        const v = d.amountCents;
+        const magnitude = v === null || v === 0 ? 0 : (Math.abs(v) / span) * 100;
+        // A tiny day still deserves a visible mark, but never one that crosses
+        // the axis and reads as the wrong sign.
+        const barPct = magnitude === 0 ? 0 : Math.max(2, magnitude);
+        const negative = v !== null && v < 0;
+
         return (
           <div key={d.date} className="flex flex-col items-center gap-1.5">
-            <div className="flex h-16 w-full items-end justify-center rounded bg-sunken">
-              {d.state === 'earned' && (
-                <div className="w-full rounded bg-series-1" style={{ height: `${h}%` }} />
+            <div className="relative w-full rounded bg-sunken" style={{ height: H }}>
+              {/* The axis, drawn on every day so the row reads as one plot. */}
+              <div
+                className="absolute inset-x-0 border-t"
+                style={{ top: `${zeroPct}%`, borderColor: 'var(--axis)' }}
+              />
+
+              {d.state === 'earned' && v !== null && v !== 0 && (
+                <div
+                  className="absolute inset-x-0"
+                  style={{
+                    height: `${barPct}%`,
+                    ...(negative
+                      ? { top: `${zeroPct}%`, borderRadius: '0 0 3px 3px' }
+                      : { bottom: `${100 - zeroPct}%`, borderRadius: '3px 3px 0 0' }),
+                    background: negative ? 'var(--series-2)' : 'var(--series-1)',
+                  }}
+                />
               )}
+
               {/* A logged zero and a day you never wrote down are different
                   facts, so they get different marks rather than both reading
-                  as empty. */}
-              {d.state === 'blank' && <div className="mb-1 h-0.5 w-3 rounded bg-axis" />}
+                  as empty. Both sit on the axis, which is where they belong. */}
+              {(d.state === 'blank' || (d.state === 'earned' && v === 0)) && (
+                <div
+                  className="absolute left-1/2 h-0.5 w-3 -translate-x-1/2 -translate-y-1/2 rounded bg-axis"
+                  style={{ top: `${zeroPct}%` }}
+                />
+              )}
               {d.state === 'unlogged' && (
-                <div className="mb-1 h-1.5 w-1.5 rounded-full border border-axis" />
+                <div
+                  className="absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-axis"
+                  style={{ top: `${zeroPct}%` }}
+                />
               )}
             </div>
+
             <div className="text-[11px] text-ink-muted">{DAY_NAMES[d.dayOfWeek - 1]}</div>
-            <div className="tabular text-[11px]">
+            <div
+              className="tabular text-[11px]"
+              style={negative ? { color: 'var(--series-2)' } : undefined}
+            >
               {d.amountCents === null
                 ? <span className="text-ink-muted">—</span>
                 : formatMoney(d.amountCents, { cents: false })}
@@ -125,9 +176,10 @@ function WeekStrip({ weeks }: { weeks: MissionWeek[] }) {
 }
 
 export default function MissionSection({
-  mission, today,
+  mission, epl, today,
 }: {
   mission: MissionDay[];
+  epl: EplFixture[];
   today: string;
 }) {
   const weeks = useMemo(() => missionWeeks(mission, today), [mission, today]);
@@ -159,11 +211,6 @@ export default function MissionSection({
   const closed = useMemo(
     () => weeks.filter((w) => w.state === 'met' || w.state === 'missed').slice(-8).reverse(),
     [weeks],
-  );
-
-  const maxDay = useMemo(
-    () => Math.max(1, ...(week?.days ?? []).map((d) => d.amountCents ?? 0)),
-    [week],
   );
 
   return (
@@ -250,7 +297,7 @@ export default function MissionSection({
             </div>
 
             <div className="mt-6">
-              <WeekDays days={week.days} maxCents={maxDay} />
+              <WeekDays days={week.days} />
             </div>
           </>
         ) : (
@@ -364,6 +411,8 @@ export default function MissionSection({
           <WeekStrip weeks={weeks} />
         </div>
       </section>
+
+      <EplSection epl={epl} />
 
       {closed.length > 0 && (
         <section className="card p-5">

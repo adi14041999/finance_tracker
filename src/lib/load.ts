@@ -1,6 +1,5 @@
 import 'server-only';
 import { cache } from 'react';
-import { cookies } from 'next/headers';
 import { getSheetData, isConfigured, type FetchResult } from './sheets';
 
 /**
@@ -13,9 +12,24 @@ import { getSheetData, isConfigured, type FetchResult } from './sheets';
  * The TTL is deliberately short. Expenses get typed into the sheet throughout
  * the day and then checked against the page immediately, so a minute of
  * staleness reads as "the app is broken" rather than "the cache hasn't
- * expired". Fifteen seconds is well inside Google's read quota for a
- * single user, and the Refresh button in Settings bypasses it entirely.
+ * expired". Fifteen seconds is well inside Google's read quota for a single
+ * user, and a page reload costs nothing.
  */
+
+/**
+ * Sample or live, fixed for the life of the process by scripts/run.mjs from
+ * the --sample / --live flag.
+ *
+ * Read once at module load rather than per request: the mode cannot change
+ * while the server is running, and re-reading it every time would only invite
+ * the belief that it could.
+ */
+const SAMPLE_MODE = process.env.DATA_MODE === 'sample';
+
+/** Which data this process is serving. The header badge reports it. */
+export function dataMode(): 'sample' | 'live' {
+  return SAMPLE_MODE ? 'sample' : 'live';
+}
 
 const TTL_MS = 15_000;
 
@@ -32,12 +46,7 @@ export function today(): string {
 }
 
 async function loadUncached(): Promise<FetchResult> {
-  // Checked BEFORE the memo: sample data must never land in a cache that live
-  // mode then reads back, or the other way round.
-  const store = await cookies();
-  if (store.get('data-mode')?.value === 'sample') {
-    return getSheetData(today(), { forceSample: true });
-  }
+  if (SAMPLE_MODE) return getSheetData(today(), { forceSample: true });
 
   const now = Date.now();
   if (memo && now - memo.at < TTL_MS) return memo.result;

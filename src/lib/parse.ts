@@ -11,8 +11,8 @@
 
 import type {
   Account, AccountClass, Balance, Budget, Category,
-  Config, EventMonth, MarginReading, MissionDay, Position, PremiumMonth, Problem,
-  Roll, SheetData, Transaction,
+  Config, EplFixture, EventMonth, MarginReading, MissionDay, Position, PremiumMonth,
+  Problem, Roll, SheetData, Transaction,
 } from './types';
 import { toCents } from './money';
 import { monthOf, normaliseDate, normaliseMonth } from './dates';
@@ -32,6 +32,7 @@ export interface RawSheet {
   events: RawRows;
   margin: RawRows;
   mission: RawRows;
+  epl: RawRows;
   config: RawRows;
 }
 
@@ -713,6 +714,47 @@ function parseMission(rows: RawRows, problems: Problem[]): MissionDay[] {
   return out;
 }
 
+/**
+ * The Premier League fixture list: one row per game, 380 of them.
+ *
+ * Rows are kept in SHEET ORDER, not sorted — the order they are written in is
+ * the order the season is played, and there is no date column to recover it
+ * from if that were lost.
+ *
+ * An empty amount is a fixture not yet played, and stays null rather than
+ * becoming zero. Zero is a real result — a game that brought nothing — and
+ * collapsing the two would make an unplayed season look like a failed one.
+ */
+function parseEpl(rows: RawRows, problems: Problem[]): EplFixture[] {
+  if (rows.length === 0) return [];
+  const r = new Reader('epl', rows[0]);
+  r.missingColumns(['fixture', 'amount'], problems);
+
+  const out: EplFixture[] = [];
+
+  for (const { row, n } of body(rows)) {
+    const fixture = r.text(row, 'fixture');
+    if (!fixture) continue; // a spare row at the bottom of the list
+
+    const raw = r.raw(row, 'amount');
+    const blank = String(raw ?? '').trim() === '';
+    const amountCents = blank ? null : toCents(raw);
+
+    if (!blank && amountCents === null) {
+      r.problem(n, 'amount', `${fixture}: couldn't read "${r.text(row, 'amount')}" as an amount. Treated as not yet played.`, 'warning');
+    }
+
+    // Optional: the season is measured in fixtures, not dates, so a missing
+    // date costs nothing but a nicer table.
+    const date = normaliseDate(r.raw(row, 'date')) ?? americanDate(r.raw(row, 'date'));
+
+    out.push({ index: out.length + 1, fixture, date, amountCents, row: n });
+  }
+
+  problems.push(...r.problems);
+  return out;
+}
+
 function parseConfig(rows: RawRows): Config {
   const map = new Map<string, string>();
   for (const row of rows.slice(1)) {
@@ -757,6 +799,7 @@ export function parseSheet(
   const events = parseEvents(raw.events, problems);
   const margin = parseMargin(raw.margin, problems);
   const mission = parseMission(raw.mission, problems);
+  const epl = parseEpl(raw.epl, problems);
   const config = parseConfig(raw.config);
 
   transactions.sort((a, b) => b.date.localeCompare(a.date) || b.row - a.row);
@@ -768,7 +811,7 @@ export function parseSheet(
 
   return {
     accounts, categories, transactions, balances, budgets, positions,
-    premiums, premiumsAnoosha, rolls, events, margin, mission, config,
+    premiums, premiumsAnoosha, rolls, events, margin, mission, epl, config,
     problems, ...meta,
   };
 }

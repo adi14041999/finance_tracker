@@ -18,14 +18,36 @@ You need [Node.js](https://nodejs.org) 20 or newer. Check with `node -v`.
 
 ```bash
 npm install
-npm run dev
+npm run sample
 ```
 
 Open **http://localhost:3000**.
 
-It works immediately, on built-in sample data — invented numbers, so you can see
-the app functioning before connecting anything. The switch at the top right says
-which data you're looking at. Connect your own sheet whenever you're ready.
+That runs on built-in sample data — invented numbers, so you can see the app
+functioning before connecting anything. Once your sheet is connected:
+
+```bash
+npm run live
+```
+
+**The mode is fixed when the server starts.** There is no switch in the app,
+because there would be nothing for a page to switch: `--sample` never touches
+Google at all, and `--live` refuses to start without credentials rather than
+quietly showing invented numbers instead. A badge in the header says which one
+you are looking at.
+
+`npm run sample` and `npm run live` are shorthand for `npm run dev` with the
+flag. Plain `npm run dev` picks live if a sheet is configured and sample if not.
+
+The flags themselves work on `build` and `start` too. They need `--` in front,
+which is npm's separator, not the app's — without it npm treats `--live` as one
+of its own options and never passes it on:
+
+```bash
+npm run build -- --live
+npm run start -- --live
+npm run dev   -- --sample -p 4000   # other flags pass through to Next
+```
 
 ---
 
@@ -137,10 +159,10 @@ your records" so a stale number never passes for a fresh one.
 by tab, row number and column, with what was wrong. It only shows up when there
 is something to say, so an empty header means a clean sheet.
 
-**Live sheet / Sample** (top right) shows which data you're looking at and
-switches between them. Sample data is invented and shares nothing with your
-sheet — useful for screenshots, or for seeing the app work before connecting
-anything.
+**Live sheet / Sample** (top right) says which data this server is serving —
+set by the flag you started it with, and unchangeable until you restart. Sample
+data is invented and shares nothing with your sheet, which makes it safe for
+screenshots.
 
 ---
 
@@ -215,8 +237,9 @@ npm run typecheck
 lowercase: `accounts`, `categories`, `transactions`, `balances`, `budgets`,
 `positions`, `premiums`, `premiums_anoosha`, `rolls`, `events`, `config`.
 
-**Still showing sample data** — either `.env.local` is incomplete, or the dev
-server was started before you saved it. Restart it.
+**Still showing sample data** — you started with `npm run sample`, or with
+`npm run dev` and no credentials. Restart with `npm run live`; if it refuses,
+it names what is missing.
 
 **Prices are blank on Positions** — `GOOGLEFINANCE` only works inside Google
 Sheets, not in the uploaded `.xlsx`. Add the formulas after importing. A ticker

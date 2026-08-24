@@ -1,5 +1,5 @@
 import RobinhoodView from '@/components/RobinhoodView';
-import { load, today } from '@/lib/load';
+import { load, today, dataMode } from '@/lib/load';
 
 export default async function RobinhoodPage() {
   const { data } = await load();
@@ -12,7 +12,9 @@ export default async function RobinhoodPage() {
       margin={data.margin}
       events={data.events}
       mission={data.mission}
+      epl={data.epl}
       today={today()}
+      sample={dataMode() === 'sample'}
     />
   );
 }

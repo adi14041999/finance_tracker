@@ -185,6 +185,28 @@ export interface MissionDay {
   row: number;
 }
 
+/**
+ * One Premier League fixture, against the mission of $50 a game across the
+ * 380 games of 2026-27.
+ *
+ * One row per fixture, all 380 of them, laid out in the sheet from the start.
+ * `amountCents` is null until that game is played and logged — which is the
+ * whole reason the rows exist up front: an empty row is a fixture still to
+ * come, and the season's shape is visible from day one rather than growing in.
+ *
+ * A logged 0 and an empty cell are different facts. Zero means the game was
+ * played and brought nothing; empty means it hasn't happened yet.
+ */
+export interface EplFixture {
+  /** 1-based position in the sheet, which is the fixture's place in the season. */
+  index: number;
+  fixture: string;
+  /** When it is played. Optional — the season works without it. */
+  date: string | null; // YYYY-MM-DD
+  amountCents: number | null;
+  row: number;
+}
+
 export interface Config {
   monthlySpendTargetCents: number | null;
   annualSpendTargetCents: number | null;
@@ -217,6 +239,7 @@ export interface SheetData {
   events: EventMonth[];
   margin: MarginReading[];
   mission: MissionDay[];
+  epl: EplFixture[];
   config: Config;
   problems: Problem[];
   fetchedAt: string; // ISO timestamp
