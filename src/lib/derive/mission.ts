@@ -1,12 +1,14 @@
 /**
  * The mission, in two horizons.
  *
- * THE LONG GAME is fixed: $256 a day from 17 August 2026 to 30 December 2029.
- * That is 1,232 days and $315,392. It never moves. It is the thing being aimed
- * at.
+ * THE LONG GAME is fixed: $612 a day from 17 August 2026 to 26 December 2027,
+ * the last Sunday of that year. That is 497 days and $304,164. It never moves.
+ * It is the thing being aimed at.
  *
- * 31 December 2029 is deliberately NOT in it. It is held back as a reserve —
- * a day that owes nothing, and is there if the last week needs rescuing.
+ * $300,000 was the figure in mind. 497 days does not divide it evenly ($603.63
+ * a day), so the bar was set at $612 and the total followed — clearing $300k
+ * with about $4,000 of room. A daily number worth remembering beats a round
+ * total, because the daily one is what gets checked against reality every day.
  *
  * THE WEEK is not fixed. Each week runs Monday to Sunday, and its goal is
  * recomputed when the previous one closes: whatever is left of the $315,648,
@@ -16,10 +18,13 @@
  * them — a fixed weekly target would either drift out of contact with the goal
  * or quietly forgive a bad week, and this does neither.
  *
- * Holding that day back makes the window exactly 176 Monday-to-Sunday weeks
- * with nothing left over — 17 August 2026 is a Monday and 30 December 2029 is
- * a Sunday. Recalibration still spreads by DAY rather than by week, which
- * keeps the arithmetic honest if the window ever changes shape again.
+ * The window is exactly 71 Monday-to-Sunday weeks with nothing left over: 17
+ * August 2026 is a Monday and 26 December 2027 is a Sunday. No reserve day is
+ * needed to make it divide — it simply does, and the last five days of 2027
+ * fall outside the mission owing nothing.
+ *
+ * Recalibration still spreads by DAY rather than by week, which keeps the
+ * arithmetic honest if the window ever changes shape again.
  */
 
 import type { MissionDay } from '../types';
@@ -27,19 +32,14 @@ import { addDays, daysBetween } from '../dates';
 
 /** A Monday. */
 export const MISSION_START = '2026-08-17';
-/** A Sunday — the last day that owes anything. */
-export const MISSION_END = '2029-12-30';
-/**
- * 31 December 2029: a spare. It sits outside the mission, owes nothing, and
- * exists so the final week has somewhere to go if it needs rescuing.
- */
-export const MISSION_RESERVE_DAY = '2029-12-31';
-export const MISSION_DAYS = daysBetween(MISSION_START, MISSION_END) + 1; // 1232
-/** 176 whole Monday-to-Sunday weeks, with nothing left over. */
-export const MISSION_WEEKS = Math.ceil(MISSION_DAYS / 7); // 176
-/** $256 a day, every day, for the whole run. */
-export const MISSION_DAILY_CENTS = 25_600;
-/** $315,392 — 1,232 days at $256. The one figure in here that never changes. */
+/** The last Sunday of 2027 — the last day that owes anything. */
+export const MISSION_END = '2027-12-26';
+export const MISSION_DAYS = daysBetween(MISSION_START, MISSION_END) + 1; // 497
+/** 71 whole Monday-to-Sunday weeks, with nothing left over. */
+export const MISSION_WEEKS = Math.ceil(MISSION_DAYS / 7); // 71
+/** $612 a day, every day, for the whole run. */
+export const MISSION_DAILY_CENTS = 61_200;
+/** $304,164 — 497 days at $612. The one figure in here that never changes. */
 export const MISSION_TARGET_CENTS = MISSION_DAYS * MISSION_DAILY_CENTS;
 
 export type WeekState = 'met' | 'missed' | 'current' | 'future';
@@ -47,14 +47,14 @@ export type DayState = 'earned' | 'blank' | 'unlogged' | 'future';
 
 export interface MissionDayCell {
   date: string;
-  /** 1-based day within its week, 1 = Saturday. */
+  /** 1-based day within its week, 1 = Monday. */
   dayOfWeek: number;
   amountCents: number | null;
   state: DayState;
 }
 
 export interface MissionWeek {
-  /** 1-based, 1..176. */
+  /** 1-based, 1..71. */
   index: number;
   startDate: string; // Monday
   endDate: string; // Sunday
@@ -75,7 +75,7 @@ export interface MissionWeek {
    * fixed when the week opened.
    *
    * Deliberately NOT "what is left over the days that remain". A rate that
-   * recalculates every day is a moving target — bank a good Saturday and
+   * recalculates every day is a moving target — bank a good Monday and
    * Sunday's number drops, miss a day and it climbs, and the figure you were
    * given on Monday is never the one you are judged against. The week already
    * recalibrates against the long game; the days inside it should not.
@@ -108,10 +108,10 @@ export interface MissionStatus {
   started: boolean;
   finished: boolean;
 
-  /** Days of the whole window gone, including today. Capped at 1,232. */
+  /** Days of the whole window gone, including today. Capped at 497. */
   daysElapsed: number;
   /**
-   * How much of the 1,232 days has gone. 0..1.
+   * How much of the 497 days has gone. 0..1.
    *
    * The counterpart to `progress`, and the gap between them is the pace read:
    * time only ever moves forward, money can stall. Money bar ahead of the time
@@ -121,7 +121,7 @@ export interface MissionStatus {
 
   /** Everything earned inside the window so far. */
   earnedCents: number;
-  /** Still to earn to reach $315,392. Zero once it is passed. */
+  /** Still to earn to reach $304,164. Zero once it is passed. */
   remainingCents: number;
   /** earnedCents / targetCents. Uncapped: beating it is possible. */
   progress: number;
@@ -136,7 +136,7 @@ export interface MissionStatus {
   weeksMet: number;
   weeksMissed: number;
 
-  /** The pace the whole thing opened at: $256 x 7 = $1,792 a week. */
+  /** The pace the whole thing opened at: $612 x 7 = $4,284 a week. */
   openingWeeklyCents: number;
   /**
    * What every remaining week must now average. The single most useful number
@@ -149,7 +149,7 @@ export interface MissionStatus {
  * This week's share of what is left, by day.
  *
  * Rounded up — a goal that rounds down can be met while leaving you fractionally
- * short, and 176 of those add up.
+ * short, and 71 of those add up.
  */
 function share(remainingCents: number, daysLeft: number, daysThisWeek: number): number {
   if (daysLeft <= 0) return 0;
@@ -157,7 +157,7 @@ function share(remainingCents: number, daysLeft: number, daysThisWeek: number): 
 }
 
 /**
- * All 176 weeks, each with the goal it was given and what it earned.
+ * All 71 weeks, each with the goal it was given and what it earned.
  *
  * Built in order because each week's goal depends on every week before it.
  * That sequential dependency is the recalibration: week N is handed whatever
@@ -178,9 +178,9 @@ export function missionWeeks(days: MissionDay[], today: string): MissionWeek[] {
 
   for (let i = 0; i < MISSION_WEEKS; i++) {
     const startDate = addDays(MISSION_START, i * 7);
-    // Clipped to the mission end. With the reserve day held back the window
-    // divides evenly, so this never fires — it stays as a guard against a
-    // future change of dates silently running a week past the finish.
+    // Clipped to the mission end. The window divides evenly, so this never
+    // fires — it stays as a guard against a future change of dates silently
+    // running a week past the finish.
     const rawEnd = addDays(startDate, 6);
     const endDate = rawEnd > MISSION_END ? MISSION_END : rawEnd;
     const dayCount = daysBetween(startDate, endDate) + 1;

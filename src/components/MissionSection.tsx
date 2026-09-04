@@ -5,7 +5,7 @@ import type { EplFixture, MissionDay } from '@/lib/types';
 import EplSection from './EplSection';
 import {
   missionWeeks, currentWeek, missionStatus,
-  MISSION_TARGET_CENTS, MISSION_DAILY_CENTS, MISSION_RESERVE_DAY,
+  MISSION_TARGET_CENTS, MISSION_DAILY_CENTS,
   type MissionWeek, type MissionDayCell,
 } from '@/lib/derive/mission';
 import { formatMoney, formatPercent } from '@/lib/money';
@@ -307,7 +307,7 @@ export default function MissionSection({
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
               {s.started
-                ? `It ran to ${prettyDate(s.endDate, true)}. ${prettyDate(MISSION_RESERVE_DAY, true)} was the reserve.`
+                ? `It ran to ${prettyDate(s.endDate, true)}.`
                 : 'Weekly goals run Monday to Sunday, and each one is set from whatever is left of the target when it begins.'}
             </p>
           </div>
@@ -352,8 +352,7 @@ export default function MissionSection({
           />
           <p className="pl-[76px] text-[11px] text-ink-muted">
             {formatMoney(s.remainingCents, { cents: false })} still to earn in the{' '}
-            {s.totalWeeks * 7 - s.daysElapsed} days left. {prettyDate(MISSION_RESERVE_DAY, true)}{' '}
-            is held back as a reserve and owes nothing.
+            {s.totalWeeks * 7 - s.daysElapsed} days left.
           </p>
         </div>
 
@@ -422,7 +421,7 @@ export default function MissionSection({
               <thead>
                 <tr className="border-b border-hairline text-left text-xs text-ink-muted">
                   <th className="py-2 pr-3 font-medium">Week</th>
-                  <th className="py-2 pr-3 font-medium">Sat – Fri</th>
+                  <th className="py-2 pr-3 font-medium">Mon – Sun</th>
                   <th className="py-2 pr-3 text-right font-medium">Goal</th>
                   <th className="py-2 pr-3 text-right font-medium">Earned</th>
                   <th className="py-2 text-right font-medium">Over / under</th>
