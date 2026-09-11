@@ -149,11 +149,12 @@ function WeekDays({ days }: { days: MissionDayCell[] }) {
 }
 
 /**
- * All 176 weeks as a strip.
+ * All 30 weeks as a strip.
  *
- * One mark per week rather than per day: across three and a half years a day
- * is noise, and what matters is the rhythm of weeks kept and weeks dropped.
- * 44 columns gives four clean rows of eleven months each.
+ * One mark per week rather than per day: across seven months a day is noise,
+ * and what matters is the rhythm of weeks kept and weeks dropped. Fifteen
+ * columns puts the whole run in two rows of roughly a quarter each, and keeps
+ * each square big enough to aim a cursor at.
  */
 function WeekStrip({ weeks }: { weeks: MissionWeek[] }) {
   const style = (w: MissionWeek) => {
@@ -165,7 +166,7 @@ function WeekStrip({ weeks }: { weeks: MissionWeek[] }) {
     }
   };
   return (
-    <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(44, minmax(0, 1fr))' }}
+    <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(15, minmax(0, 1fr))' }}
       role="img" aria-label={`${weeks.length} weeks`}>
       {weeks.map((w) => (
         <div key={w.index} className="aspect-square rounded-[2px]" style={style(w)}

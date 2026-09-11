@@ -20,27 +20,25 @@ const dow = (date: string) => {
 };
 
 describe('the shape of the window', () => {
-  it('runs Mon 17 Aug 2026 to Sun 26 Dec 2027', () => {
+  it('runs Mon 17 Aug 2026 to Sun 14 Mar 2027', () => {
     expect(MISSION_START).toBe('2026-08-17');
-    expect(MISSION_END).toBe('2027-12-26');
+    expect(MISSION_END).toBe('2027-03-14');
     expect(dow(MISSION_START)).toBe(1);
     expect(dow(MISSION_END)).toBe(0);
   });
 
-  it('ends on the LAST Sunday of 2027, with the rest of the year outside it', () => {
-    // 27-31 Dec 2027 owe nothing. Ending on the Sunday is what makes the
-    // window divide into whole weeks without a reserve day to absorb a stub.
+  it('ends on a Sunday, so the last week is whole like every other', () => {
+    // Ending on the Sunday is what makes the window divide into whole weeks
+    // without a reserve day to absorb a stub.
     expect(dow(MISSION_END)).toBe(0);
-    expect(MISSION_END > '2027-12-24').toBe(true); // it is the last one
-    expect(MISSION_END < '2027-12-31').toBe(true);
     const last = weeksOf([], '2026-08-17')[MISSION_WEEKS - 1];
     expect(last.endDate).toBe(MISSION_END);
     expect(last.days.every((d) => d.date <= MISSION_END)).toBe(true);
   });
 
-  it('is 497 days — exactly 71 whole weeks', () => {
-    expect(MISSION_DAYS).toBe(497);
-    expect(MISSION_WEEKS).toBe(71);
+  it('is 210 days — exactly 30 whole weeks', () => {
+    expect(MISSION_DAYS).toBe(210);
+    expect(MISSION_WEEKS).toBe(30);
     expect(MISSION_DAYS % 7).toBe(0);
     expect(MISSION_WEEKS * 7).toBe(MISSION_DAYS);
   });
@@ -54,41 +52,41 @@ describe('the shape of the window', () => {
     }
   });
 
-  it('targets $304,164 — 497 days at $612', () => {
-    expect(MISSION_DAILY_CENTS).toBe(61_200);
-    expect(MISSION_TARGET_CENTS).toBe(30_416_400);
+  it('targets $300,300 — 210 days at $1,430', () => {
+    expect(MISSION_DAILY_CENTS).toBe(143_000);
+    expect(MISSION_TARGET_CENTS).toBe(30_030_000);
     expect(MISSION_TARGET_CENTS).toBe(MISSION_DAYS * MISSION_DAILY_CENTS);
   });
 
   it('clears the $300,000 it was aimed at, with room to spare', () => {
-    // $300,000 / 497 is $603.63, which nobody would remember. $612 was chosen
-    // instead and the total followed.
+    // The rate came first — $10,010 a week — and the window was cut to the
+    // first whole week that clears $300,000. Thirty weeks does it, by $300.
     expect(MISSION_TARGET_CENTS).toBeGreaterThan(30_000_000);
-    expect(MISSION_TARGET_CENTS - 30_000_000).toBeLessThan(500_000);
+    expect(MISSION_TARGET_CENTS - 30_000_000).toBe(30_000);
   });
 });
 
 describe('the opening goal', () => {
-  it('is exactly $4,284 — seven days at $612, no rounding needed', () => {
+  it('is exactly $10,010 — seven days at $1,430, no rounding needed', () => {
     const w = weeksOf([], '2026-08-17')[0];
-    expect(w.goalCents).toBe(428_400);
+    expect(w.goalCents).toBe(1_001_000);
     expect(w.perDayCents).toBe(MISSION_DAILY_CENTS);
   });
 
   it('projects every future week at today’s pace, not at zero', () => {
-    // A week two years out must not be handed the whole outstanding balance.
-    // Every unstarted week shows the same rate, scaled by its length.
+    // The last week must not be handed the whole outstanding balance. Every
+    // unstarted week shows the same rate, scaled by its length.
     const weeks = weeksOf([], '2026-08-17');
-    const far = weeks[70];
-    expect(far.goalCents).toBeLessThan(500_000);
+    const far = weeks[MISSION_WEEKS - 1];
+    expect(far.goalCents).toBe(weeks[1].goalCents);
     expect(far.perDayCents).toBe(weeks[1].perDayCents);
   });
 });
 
 describe('recalibration', () => {
   it('lowers later weeks when a week beats its goal', () => {
-    const weeks = weeksOf([day('2026-08-17', 5000)], '2026-08-25'); // into week two
-    expect(weeks[0].earnedCents).toBe(500_000);
+    const weeks = weeksOf([day('2026-08-17', 15000)], '2026-08-25'); // into week two
+    expect(weeks[0].earnedCents).toBe(1_500_000);
     expect(weeks[0].state).toBe('met');
     expect(weeks[1].goalCents).toBeLessThan(weeks[0].goalCents);
   });
@@ -100,10 +98,10 @@ describe('recalibration', () => {
   });
 
   it('spreads the shortfall over days remaining, not weeks remaining', () => {
-    // Week one earns nothing; the $4,284 owed is spread across the 490 days
+    // Week one earns nothing; the $10,010 owed is spread across the 203 days
     // that are left, then multiplied back up by this week's seven.
     const weeks = weeksOf([], '2026-08-25');
-    expect(weeks[1].goalCents).toBe(Math.ceil((30_416_400 / 490) * 7));
+    expect(weeks[1].goalCents).toBe(Math.ceil((30_030_000 / 203) * 7));
   });
 
   it('never lets a mid-week earning move the current week goal', () => {
@@ -158,7 +156,7 @@ describe('the current week', () => {
     expect(w.endDate).toBe('2026-08-23');
     expect(w.daysElapsed).toBe(3); // Mon, Tue, Wed
     expect(w.daysLeft).toBe(5); // Wed through Sun
-    expect(w.remainingCents).toBe(428_400 - 30_000);
+    expect(w.remainingCents).toBe(1_001_000 - 30_000);
   });
 
   it('has elapsed and remaining both include today', () => {
@@ -174,7 +172,7 @@ describe('the current week', () => {
 
   it('is null before the start, and after the finish', () => {
     expect(currentWeek(weeksOf([], '2026-08-16'), '2026-08-16')).toBeNull();
-    expect(currentWeek(weeksOf([], '2027-12-27'), '2027-12-27')).toBeNull();
+    expect(currentWeek(weeksOf([], '2027-03-15'), '2027-03-15')).toBeNull();
   });
 });
 
@@ -186,26 +184,26 @@ describe('the daily rate', () => {
   });
 
   it('follows the goal when the goal recalibrates between weeks', () => {
-    const weeks = weeksOf([day('2026-08-17', 5000)], '2026-08-25');
+    const weeks = weeksOf([day('2026-08-17', 15000)], '2026-08-25');
     expect(weeks[1].perDayCents).toBe(Math.ceil(weeks[1].goalCents / 7));
     expect(weeks[1].perDayCents).toBeLessThan(weeks[0].perDayCents);
   });
 });
 
 describe('status', () => {
-  it('tracks the long game against $304,164', () => {
+  it('tracks the long game against $300,300', () => {
     const s = status([day('2026-08-17', 5000)], '2026-08-19');
     expect(s.earnedCents).toBe(500_000);
-    expect(s.remainingCents).toBe(29_916_400);
-    expect(s.progress).toBeCloseTo(500_000 / 30_416_400, 10);
+    expect(s.remainingCents).toBe(29_530_000);
+    expect(s.progress).toBeCloseTo(500_000 / 30_030_000, 10);
   });
 
-  it('opens at $4,284 a week', () => {
-    expect(status([], '2026-08-17').openingWeeklyCents).toBe(428_400);
+  it('opens at $10,010 a week', () => {
+    expect(status([], '2026-08-17').openingWeeklyCents).toBe(1_001_000);
   });
 
   it('counts weeks met and missed once they close', () => {
-    const s = status([day('2026-08-17', 5000), day('2026-08-24', 1)], '2026-09-01');
+    const s = status([day('2026-08-17', 15000), day('2026-08-24', 1)], '2026-09-01');
     expect(s.weeksElapsed).toBe(2);
     expect(s.weeksMet).toBe(1);
     expect(s.weeksMissed).toBe(1);
@@ -218,14 +216,14 @@ describe('status', () => {
     expect(s.currentWeekIndex).toBe(1);
   });
 
-  it('tracks the window from day one to day 497', () => {
+  it('tracks the window from day one to day 210', () => {
     expect(status([], '2026-08-17').daysElapsed).toBe(1);
-    expect(status([], MISSION_END).daysElapsed).toBe(497);
+    expect(status([], MISSION_END).daysElapsed).toBe(210);
     expect(status([], MISSION_END).timeProgress).toBe(1);
   });
 
   it('is finished the day after the last Sunday', () => {
-    const s = status([], '2027-12-27');
+    const s = status([], '2027-03-15');
     expect(s.finished).toBe(true);
     expect(s.timeProgress).toBe(1);
   });

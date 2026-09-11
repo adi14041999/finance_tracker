@@ -1,27 +1,31 @@
 /**
  * The mission, in two horizons.
  *
- * THE LONG GAME is fixed: $612 a day from 17 August 2026 to 26 December 2027,
- * the last Sunday of that year. That is 497 days and $304,164. It never moves.
- * It is the thing being aimed at.
+ * THE LONG GAME is fixed: $1,430 a day from 17 August 2026 to 14 March 2027.
+ * That is 210 days and $300,300. It never moves. It is the thing being aimed
+ * at.
  *
- * $300,000 was the figure in mind. 497 days does not divide it evenly ($603.63
- * a day), so the bar was set at $612 and the total followed — clearing $300k
- * with about $4,000 of room. A daily number worth remembering beats a round
- * total, because the daily one is what gets checked against reality every day.
+ * $300,000 was the figure in mind. The rate came first — $10,010 a week, which
+ * is $1,430 a day — and the window was then cut to the first whole week that
+ * clears $300,000. Thirty weeks does it, landing on $300,300 with $300 of
+ * room. Setting the rate and letting the total follow keeps the daily number
+ * memorable, and the daily number is the one checked against reality.
  *
  * THE WEEK is not fixed. Each week runs Monday to Sunday, and its goal is
- * recomputed when the previous one closes: whatever is left of the $315,648,
+ * recomputed when the previous one closes: whatever is left of the $300,300,
  * spread over the days left to earn it, times the days in this week. Beat a
  * week and next week's number falls. Miss one and it rises. The long game
  * absorbs the difference either way, which is the whole point of splitting
  * them — a fixed weekly target would either drift out of contact with the goal
  * or quietly forgive a bad week, and this does neither.
  *
- * The window is exactly 71 Monday-to-Sunday weeks with nothing left over: 17
- * August 2026 is a Monday and 26 December 2027 is a Sunday. No reserve day is
- * needed to make it divide — it simply does, and the last five days of 2027
- * fall outside the mission owing nothing.
+ * Week one therefore opens at exactly $10,010, because 210 days at $1,430
+ * spread over the first seven is the rate itself. Every week after that is
+ * whatever the ones before it left behind.
+ *
+ * The window is exactly 30 Monday-to-Sunday weeks with nothing left over: 17
+ * August 2026 is a Monday and 14 March 2027 is a Sunday. No reserve day is
+ * needed to make it divide — it simply does.
  *
  * Recalibration still spreads by DAY rather than by week, which keeps the
  * arithmetic honest if the window ever changes shape again.
@@ -32,14 +36,14 @@ import { addDays, daysBetween } from '../dates';
 
 /** A Monday. */
 export const MISSION_START = '2026-08-17';
-/** The last Sunday of 2027 — the last day that owes anything. */
-export const MISSION_END = '2027-12-26';
-export const MISSION_DAYS = daysBetween(MISSION_START, MISSION_END) + 1; // 497
-/** 71 whole Monday-to-Sunday weeks, with nothing left over. */
-export const MISSION_WEEKS = Math.ceil(MISSION_DAYS / 7); // 71
-/** $612 a day, every day, for the whole run. */
-export const MISSION_DAILY_CENTS = 61_200;
-/** $304,164 — 497 days at $612. The one figure in here that never changes. */
+/** A Sunday — the last day that owes anything. */
+export const MISSION_END = '2027-03-14';
+export const MISSION_DAYS = daysBetween(MISSION_START, MISSION_END) + 1; // 210
+/** 30 whole Monday-to-Sunday weeks, with nothing left over. */
+export const MISSION_WEEKS = Math.ceil(MISSION_DAYS / 7); // 30
+/** $1,430 a day — $10,010 a week — every day, for the whole run. */
+export const MISSION_DAILY_CENTS = 143_000;
+/** $300,300 — 210 days at $1,430. The one figure in here that never changes. */
 export const MISSION_TARGET_CENTS = MISSION_DAYS * MISSION_DAILY_CENTS;
 
 export type WeekState = 'met' | 'missed' | 'current' | 'future';
@@ -54,7 +58,7 @@ export interface MissionDayCell {
 }
 
 export interface MissionWeek {
-  /** 1-based, 1..71. */
+  /** 1-based, 1..30. */
   index: number;
   startDate: string; // Monday
   endDate: string; // Sunday
@@ -108,10 +112,10 @@ export interface MissionStatus {
   started: boolean;
   finished: boolean;
 
-  /** Days of the whole window gone, including today. Capped at 497. */
+  /** Days of the whole window gone, including today. Capped at 210. */
   daysElapsed: number;
   /**
-   * How much of the 497 days has gone. 0..1.
+   * How much of the 210 days has gone. 0..1.
    *
    * The counterpart to `progress`, and the gap between them is the pace read:
    * time only ever moves forward, money can stall. Money bar ahead of the time
@@ -121,7 +125,7 @@ export interface MissionStatus {
 
   /** Everything earned inside the window so far. */
   earnedCents: number;
-  /** Still to earn to reach $304,164. Zero once it is passed. */
+  /** Still to earn to reach $300,300. Zero once it is passed. */
   remainingCents: number;
   /** earnedCents / targetCents. Uncapped: beating it is possible. */
   progress: number;
@@ -136,7 +140,7 @@ export interface MissionStatus {
   weeksMet: number;
   weeksMissed: number;
 
-  /** The pace the whole thing opened at: $612 x 7 = $4,284 a week. */
+  /** The pace the whole thing opened at: $1,430 x 7 = $10,010 a week. */
   openingWeeklyCents: number;
   /**
    * What every remaining week must now average. The single most useful number
@@ -149,7 +153,7 @@ export interface MissionStatus {
  * This week's share of what is left, by day.
  *
  * Rounded up — a goal that rounds down can be met while leaving you fractionally
- * short, and 71 of those add up.
+ * short, and 30 of those add up.
  */
 function share(remainingCents: number, daysLeft: number, daysThisWeek: number): number {
   if (daysLeft <= 0) return 0;
@@ -157,7 +161,7 @@ function share(remainingCents: number, daysLeft: number, daysThisWeek: number): 
 }
 
 /**
- * All 71 weeks, each with the goal it was given and what it earned.
+ * All 30 weeks, each with the goal it was given and what it earned.
  *
  * Built in order because each week's goal depends on every week before it.
  * That sequential dependency is the recalibration: week N is handed whatever
