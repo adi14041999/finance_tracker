@@ -8,7 +8,7 @@ Three pages:
 
 - **Expenses** — spend against budget by category, share-of-month donut, trend over YTD / 12 months / 3 or 5 years / all time, with 3, 6 and 12-month running averages, searchable ledger, and the counting rules written down at the bottom
 - **Net Worth** — cash / investment / debt split, history over YTD / 12 months / 3 or 5 years / all time, per-account table with 1, 3, 6 and 12-month changes
-- **Robinhood** — four tabs: **Positions** (realized losses and the unrealized gains working them off), **Premiums** (daily options income, month by month), **Rolls** (what each roll cost and how much has been collected back), **Event contracts** (realized monthly profit and loss)
+- **Robinhood** — four tabs: **Positions** (realized losses and the unrealized gains working them off), **Premiums** (daily options income, month by month), **Rolls** (what each roll cost and how much has been collected back), **Event contracts** (realized monthly profit and loss, plus the sprint ladder and the weekly goal)
 
 ---
 
@@ -60,9 +60,10 @@ Three things: the sheet, a robot account that can read it, and two values in a f
 Upload `finance-tracker.xlsx` to Google Drive and open it with Google Sheets,
 then delete the grey sample rows.
 
-The app reads eleven tabs, named exactly, lowercase: `accounts`, `categories`,
+The app reads fifteen tabs, named exactly, lowercase: `accounts`, `categories`,
 `transactions`, `balances`, `budgets`, `positions`, `premiums`,
-`premiums_anoosha`, `rolls`, `events`, `config`. A tab you don't use can be left
+`premiums_anoosha`, `rolls`, `events`, `margin`, `mission`, `sprints`, `epl`,
+`config`. A tab you don't use can be left
 empty or left out entirely — the app checks which tabs exist before reading, and
 names any that are missing rather than failing. `seed-data/` holds a CSV per tab
 showing the expected columns.
@@ -233,9 +234,10 @@ npm run typecheck
 **401, or "error:1E08010C"** — the private key got mangled. Re-run
 `npm run setup -- <key.json> <sheet-url> --force` rather than editing it by hand.
 
-**"Unable to parse range"** — a tab is missing or renamed. Exactly these eleven,
+**"Unable to parse range"** — a tab is missing or renamed. Exactly these fifteen,
 lowercase: `accounts`, `categories`, `transactions`, `balances`, `budgets`,
-`positions`, `premiums`, `premiums_anoosha`, `rolls`, `events`, `config`.
+`positions`, `premiums`, `premiums_anoosha`, `rolls`, `events`, `margin`,
+`mission`, `sprints`, `epl`, `config`.
 
 **Still showing sample data** — you started with `npm run sample`, or with
 `npm run dev` and no credentials. Restart with `npm run live`; if it refuses,

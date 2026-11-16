@@ -20,7 +20,7 @@ import type { SheetData } from './types';
 
 const TABS = [
   'accounts', 'categories', 'transactions',
-  'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'events', 'margin', 'mission', 'epl', 'config',
+  'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'events', 'margin', 'mission', 'sprints', 'epl', 'config',
 ] as const;
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -136,24 +136,52 @@ async function fetchRaw(sheetId: string): Promise<{ raw: RawSheet; missing: stri
   return { raw: out, missing };
 }
 
+/**
+ * Google's own message, pulled out of its JSON error body.
+ *
+ * Worth the trouble because the guesses below are only guesses. A 403 saying
+ * the sheet is not shared and a 403 saying the service account was deleted read
+ * identically to the app, and swallowing Google's text left no way to tell them
+ * apart — which turns a two-minute fix into an afternoon.
+ */
+function googleSays(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; status?: string } };
+    const m = parsed.error?.message;
+    if (m) return m.slice(0, 300);
+  } catch {
+    // Not JSON — fall through to the raw body.
+  }
+  return body.replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
 /** Turns Google's error bodies into something worth reading. */
 function explain(status: number, body: string): string {
+  const said = googleSays(body);
+  const suffix = said ? ` Google said: "${said}"` : '';
+
   if (status === 403) {
     if (body.includes('caller does not have permission') || body.includes('PERMISSION_DENIED')) {
-      return 'Google refused the request (403). The usual cause is that the sheet has not been shared with the service account. Open the sheet, click Share, and add the client_email from your credentials as a Viewer.';
+      return `Google refused the request (403). Either the sheet is no longer shared with the service account, or the service account itself has been deleted or disabled — both report the same thing. Check Share on the sheet first, then that the key still exists in the Cloud console.${suffix}`;
     }
-    return 'Google refused the request (403). Check that the Google Sheets API is enabled for your Cloud project.';
+    if (body.includes('has not been used') || body.includes('is disabled')) {
+      return `Google refused the request (403) because the Sheets API is switched off for your Cloud project. Enable it and wait a minute.${suffix}`;
+    }
+    if (body.includes('Quota') || body.includes('RATE_LIMIT')) {
+      return `Google refused the request (403) on quota. Wait a minute and reload.${suffix}`;
+    }
+    return `Google refused the request (403).${suffix}`;
   }
   if (status === 404) {
-    return 'No sheet with that ID (404). GOOGLE_SHEET_ID should be the part of the URL between /d/ and /edit.';
+    return `No sheet with that ID (404). GOOGLE_SHEET_ID should be the part of the URL between /d/ and /edit.${suffix}`;
   }
   if (status === 400 && body.includes('Unable to parse range')) {
-    return 'One of the fourteen tabs is missing or renamed. The app expects tabs named exactly: accounts, categories, transactions, balances, budgets, positions, premiums, premiums_anoosha, rolls, events, margin, mission, epl, config.';
+    return `A tab is missing or renamed. The app expects tabs named exactly: ${TABS.join(', ')}.${suffix}`;
   }
   if (status === 401) {
-    return 'Google rejected the credentials (401). If you pasted the private key by hand, check that the \\n escapes survived intact.';
+    return `Google rejected the credentials (401). If you pasted the private key by hand, check that the \\n escapes survived intact.${suffix}`;
   }
-  return `Google returned ${status}. ${body.slice(0, 300)}`;
+  return `Google returned ${status}.${suffix}`;
 }
 
 export async function getSheetData(

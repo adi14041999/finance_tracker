@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseSheet, type RawSheet } from './parse';
 import { sampleSheet } from './fixtures';
 import { rollRows } from './derive/rolls';
+import { SPRINT_DAILY_CENTS, SPRINT_WEEK_CENTS } from './derive/sprints';
 
 const META = { fetchedAt: '2026-07-31T00:00:00.000Z', source: 'sample' as const };
 
@@ -52,6 +53,9 @@ function sheet(overrides: Partial<RawSheet> = {}): RawSheet {
     ],
     mission: [
       ['date', 'amount'],
+    ],
+    sprints: [
+      ['name', 'target', 'started', 'completed'],
     ],
     epl: [
       ['fixture', 'date', 'amount'],
@@ -623,6 +627,165 @@ describe('buy-to-close rows on the rolls tab', () => {
     const rows = rollRows(rolls);
     expect(rows.find((r) => r.ticker === 'AAPL')!.strikeMoved).toBe(25);
     expect(rows.find((r) => r.ticker === 'KO')!.strikeMoved).toBeNull();
+  });
+});
+
+describe('the sprint list', () => {
+  const HDR = ['name', 'target', 'started', 'completed'];
+  const g = (rows: unknown[][]) => parseSheet(sheet({ sprints: [HDR, ...rows] }), META);
+
+  it('reads a name, a target, a start and a finish', () => {
+    const { sprints, problems } = g([['vandromme', 30000, '2026-09-18', '2026-11-02']]);
+    expect(problems).toEqual([]);
+    expect(sprints).toHaveLength(1);
+    expect(sprints[0]).toMatchObject({
+      index: 1, name: 'vandromme', targetCents: 3_000_000,
+      started: '2026-09-18', completed: '2026-11-02',
+    });
+  });
+
+  it('leaves a blank finish as null, which is what running means', () => {
+    const { sprints, problems } = g([['vandromme', 30000, '2026-09-18', '']]);
+    expect(sprints[0].completed).toBeNull();
+    expect(problems).toEqual([]);
+  });
+
+  it('keeps sheet order, because that is the order they are run in', () => {
+    const { sprints } = g([
+      ['second', 5000, '2026-12-01', ''],
+      ['first', 30000, '2026-09-18', '2026-11-30'],
+    ]);
+    expect(sprints.map((s) => s.name)).toEqual(['second', 'first']);
+    expect(sprints.map((s) => s.index)).toEqual([1, 2]);
+  });
+
+  it('skips a spare row at the bottom without complaining', () => {
+    const { sprints, problems } = g([['vandromme', 30000, '2026-09-18', ''], ['', '', '', '']]);
+    expect(sprints).toHaveLength(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('refuses a sprint with no readable target', () => {
+    const { sprints, problems } = g([['vandromme', 'soon', '2026-09-18', '']]);
+    expect(sprints).toHaveLength(0);
+    expect(problems[0].column).toBe('target');
+  });
+
+  it('refuses a target of zero or less, which gives nothing to aim at', () => {
+    expect(g([['vandromme', 0, '2026-09-18', '']]).sprints).toHaveLength(0);
+    expect(g([['vandromme', -500, '2026-09-18', '']]).sprints).toHaveLength(0);
+  });
+
+  it('refuses a target smaller than one week at the standing rate', () => {
+    // The estimate is whole weeks, so anything under a week has no whole week
+    // to round to. The message quotes the live constants rather than a figure
+    // written out here, so changing the rate cannot leave it lying.
+    const { sprints, problems } = g([['tiny', 1000, '2026-09-18', '']]);
+    expect(sprints).toHaveLength(0);
+    expect(problems[0].column).toBe('target');
+    expect(problems[0].message).toContain((SPRINT_WEEK_CENTS / 100).toLocaleString());
+    expect(problems[0].message).toContain((SPRINT_DAILY_CENTS / 100).toLocaleString());
+  });
+
+  it('accepts a target of exactly one week', () => {
+    const { sprints, problems } = g([['week', SPRINT_WEEK_CENTS / 100, '2026-09-18', '']]);
+    expect(sprints).toHaveLength(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('leaves a blank start date to be chained from the sprint above', () => {
+    const { sprints, problems } = g([
+      ['one', 7000, '2026-09-19', '2026-10-02'],
+      ['two', 7000, '', ''],
+    ]);
+    expect(problems).toEqual([]);
+    expect(sprints[1].started).toBeNull();
+  });
+
+  it('warns but keeps going when the start date is unreadable', () => {
+    // Taken as blank, so it chains — better than dropping the sprint.
+    const { sprints, problems } = g([['vandromme', 30000, 'whenever', '']]);
+    expect(sprints).toHaveLength(1);
+    expect(sprints[0].started).toBeNull();
+    expect(problems[0].column).toBe('started');
+    expect(problems[0].severity).toBe('warning');
+  });
+
+  it('names a gap between one sprint finishing and the next starting', () => {
+    const { problems } = g([
+      ['one', 7000, '2026-09-19', '2026-10-02'],
+      ['two', 7000, '2026-10-05', ''],
+    ]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0].column).toBe('started');
+    expect(problems[0].message).toContain('2026-10-03');
+    expect(problems[0].message).toContain('count toward nothing');
+  });
+
+  it('names an overlap, where days would be counted twice', () => {
+    const { problems } = g([
+      ['one', 7000, '2026-09-19', '2026-10-02'],
+      ['two', 7000, '2026-09-28', ''],
+    ]);
+    expect(problems[0].message).toContain('counted twice');
+  });
+
+  it('says nothing when a typed start follows the chain exactly', () => {
+    const { problems } = g([
+      ['one', 7000, '2026-09-19', '2026-10-02'],
+      ['two', 7000, '2026-10-03', ''],
+    ]);
+    expect(problems).toEqual([]);
+  });
+
+  it('names the stale row when two unfinished sprints share a name', () => {
+    // The failure this catches: an edit typed into a new row instead of the
+    // old one. The app runs the first unfinished sprint, so the old row keeps
+    // winning and every later edit looks like it did nothing.
+    const { sprints, problems } = g([
+      ['lamens', 7000, '2026-09-19', ''],
+      ['lamens', 9000, '2026-09-19', ''],
+    ]);
+    expect(sprints).toHaveLength(2);
+    expect(problems).toHaveLength(1);
+    expect(problems[0].column).toBe('name');
+    expect(problems[0].message).toContain('row 2');
+  });
+
+  it('says nothing when the earlier one is finished', () => {
+    const { problems } = g([
+      ['lamens', 7000, '2026-09-19', '2026-09-30'],
+      ['lamens', 9000, '2026-10-01', ''],
+    ]);
+    expect(problems).toEqual([]);
+  });
+
+  it('says nothing about differently named sprints queued together', () => {
+    const { problems } = g([
+      ['lamens', 9000, '2026-09-19', ''],
+      ['next one', 9000, '2026-10-10', ''],
+    ]);
+    expect(problems).toEqual([]);
+  });
+
+  it('refuses a finish that lands before the start, and keeps it running', () => {
+    // Otherwise the sprint reports a negative duration and the dashboard
+    // shows it as having taken less than no time at all.
+    const { sprints, problems } = g([['vandromme', 30000, '2026-09-18', '2026-09-01']]);
+    expect(sprints[0].completed).toBeNull();
+    expect(problems[0].column).toBe('completed');
+  });
+
+  it('warns but keeps going when the finish is unreadable', () => {
+    const { sprints, problems } = g([['vandromme', 30000, '2026-09-18', 'nearly']]);
+    expect(sprints[0].completed).toBeNull();
+    expect(problems[0].severity).toBe('warning');
+  });
+
+  it('reads American dates, like every other tab', () => {
+    const { sprints } = g([['vandromme', 30000, '9/18/2026', '11/2/2026']]);
+    expect(sprints[0].started).toBe('2026-09-18');
+    expect(sprints[0].completed).toBe('2026-11-02');
   });
 });
 

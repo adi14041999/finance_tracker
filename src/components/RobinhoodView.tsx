@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type {
-  EplFixture, EventMonth, MarginReading, MissionDay, Position, PremiumMonth, Roll,
+  EplFixture, EventMonth, MarginReading, MissionDay, Position, PremiumMonth, Roll, Sprint,
 } from '@/lib/types';
 import PositionsTab from './PositionsTab';
 import PremiumsTab from './PremiumsTab';
@@ -34,7 +34,7 @@ const ALL_TABS = [
 type TabKey = (typeof ALL_TABS)[number]['key'];
 
 export default function RobinhoodView({
-  positions, premiums, premiumsAnoosha, rolls, events, margin, mission, epl,
+  positions, premiums, premiumsAnoosha, rolls, events, margin, mission, sprints, epl,
   today, sample,
 }: {
   positions: Position[];
@@ -44,6 +44,7 @@ export default function RobinhoodView({
   events: EventMonth[];
   margin: MarginReading[];
   mission: MissionDay[];
+  sprints: Sprint[];
   epl: EplFixture[];
   today: string;
   /** True when the server was started with --sample. */
@@ -100,7 +101,7 @@ export default function RobinhoodView({
       )}
       {active === 'rolls' && <RollsTab rolls={rolls} />}
       {active === 'margin' && <MarginTab margin={margin} today={today} />}
-      {active === 'events' && <EventsTab events={events} mission={mission} epl={epl} today={today} />}
+      {active === 'events' && <EventsTab events={events} mission={mission} sprints={sprints} epl={epl} today={today} />}
     </div>
   );
 }

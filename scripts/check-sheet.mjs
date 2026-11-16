@@ -26,7 +26,7 @@ if (missing.length || !hasCreds) {
 
 const { GoogleAuth } = await import('google-auth-library');
 
-const TABS = ['accounts', 'categories', 'transactions', 'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'events', 'margin', 'mission', 'epl', 'config'];
+const TABS = ['accounts', 'categories', 'transactions', 'balances', 'budgets', 'positions', 'premiums', 'premiums_anoosha', 'rolls', 'events', 'margin', 'mission', 'sprints', 'epl', 'config'];
 
 function credentials() {
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()) {
@@ -74,9 +74,31 @@ const metaRes = await fetch(
 if (!metaRes.ok) {
   const body = await metaRes.text();
   console.error(`  Google returned ${metaRes.status} listing the tabs.\n`);
+  // Google's own words, always. The guesses below are guesses; this is not.
+  // A 403 for "not shared", for "API disabled" and for "project suspended" are
+  // indistinguishable to this script, and only Google's message separates them.
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed?.error) {
+      console.error('  GOOGLE SAID:');
+      console.error(`    status:  ${parsed.error.status ?? '(none)'}`);
+      console.error(`    message: ${parsed.error.message ?? '(none)'}`);
+      for (const d of parsed.error.details ?? []) {
+        if (d.reason) console.error(`    reason:  ${d.reason}`);
+        if (d.metadata) console.error(`    meta:    ${JSON.stringify(d.metadata)}`);
+      }
+      console.error('');
+    }
+  } catch {
+    console.error(`  GOOGLE SAID: ${body.slice(0, 500)}\n`);
+  }
   if (metaRes.status === 403) {
-    console.error('  Almost always: the sheet has not been shared with the robot account.');
-    console.error(`  Open the sheet, click Share, add ${creds.client_email} as a Viewer.\n`);
+    console.error('  A 403 here means the credentials WORKED and access was refused.');
+    console.error('  So it is not a deleted service account or a bad key — those fail earlier.');
+    console.error('  Read the message above: it names which of these it is —');
+    console.error(`    - the sheet is not shared with ${creds.client_email}`);
+    console.error('    - the Google Sheets API is disabled for the Cloud project');
+    console.error('    - the Cloud project is suspended, usually billing\n');
   } else if (metaRes.status === 404) {
     console.error('  No sheet with that ID. GOOGLE_SHEET_ID is the part of the URL');
     console.error('  between /d/ and /edit.\n');

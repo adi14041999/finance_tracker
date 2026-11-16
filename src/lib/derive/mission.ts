@@ -1,72 +1,60 @@
 /**
- * The mission, in two horizons.
+ * The week, inside whichever sprint is running.
  *
- * THE LONG GAME is fixed: $1,430 a day from 17 August 2026 to 14 March 2027.
- * That is 210 days and $300,300. It never moves. It is the thing being aimed
- * at.
+ * There is no long game any more. The thing being aimed at is the current
+ * sprint, and the week is how it gets broken down: each week takes whatever is
+ * left of the sprint, spreads it over the days the estimate has left, and asks
+ * for this week's share of that.
  *
- * $300,000 was the figure in mind. The rate came first — $10,010 a week, which
- * is $1,430 a day — and the window was then cut to the first whole week that
- * clears $300,000. Thirty weeks does it, landing on $300,300 with $300 of
- * room. Setting the rate and letting the total follow keeps the daily number
- * memorable, and the daily number is the one checked against reality.
+ * A WEEK'S GOAL IS FIXED THE MOMENT IT OPENS. Beat a week and next week's
+ * number falls; miss one and it rises. But nothing moves under you mid-week —
+ * the figure you were handed on the first day is the one you are judged against
+ * on the last. Recalibration is a thing that happens between weeks, never
+ * inside one.
  *
- * THE WEEK is not fixed. Each week runs Monday to Sunday, and its goal is
- * recomputed when the previous one closes: whatever is left of the $300,300,
- * spread over the days left to earn it, times the days in this week. Beat a
- * week and next week's number falls. Miss one and it rises. The long game
- * absorbs the difference either way, which is the whole point of splitting
- * them — a fixed weekly target would either drift out of contact with the goal
- * or quietly forgive a bad week, and this does neither.
+ * WEEKS ARE ANCHORED TO THE SPRINT'S START, not to the calendar. A sprint that
+ * begins on a Friday has Friday-to-Thursday weeks; one that begins on a Tuesday
+ * has Tuesday-to-Monday weeks. The alternative — fixed calendar weeks — would
+ * open every sprint with a stub, and a three-day first week reporting a missed
+ * goal is noise, not information.
  *
- * Week one therefore opens at exactly $10,010, because 210 days at $1,430
- * spread over the first seven is the rate itself. Every week after that is
- * whatever the ones before it left behind.
+ * PAST THE ESTIMATE, the recalibration has nothing left to divide by, so the
+ * weekly goal reverts to the flat rate: $269 a day, or whatever is left if that
+ * is less. Spreading the remainder over zero days would ask for everything at
+ * once, which is arithmetic rather than a plan.
  *
- * The window is exactly 30 Monday-to-Sunday weeks with nothing left over: 17
- * August 2026 is a Monday and 14 March 2027 is a Sunday. No reserve day is
- * needed to make it divide — it simply does.
- *
- * Recalibration still spreads by DAY rather than by week, which keeps the
- * arithmetic honest if the window ever changes shape again.
+ * THERE IS NO STUB WEEK. A sprint's estimate is a whole number of weeks, so
+ * every week inside it is seven days long and every weekly goal is comparable
+ * to every other. Only an overrunning sprint can end mid-week, and by then the
+ * flat rate is what is being asked for anyway.
  */
 
 import type { MissionDay } from '../types';
+import type { LiveSprint } from './sprints';
+import { SPRINT_DAILY_CENTS } from './sprints';
 import { addDays, daysBetween } from '../dates';
-
-/** A Monday. */
-export const MISSION_START = '2026-08-17';
-/** A Sunday — the last day that owes anything. */
-export const MISSION_END = '2027-03-14';
-export const MISSION_DAYS = daysBetween(MISSION_START, MISSION_END) + 1; // 210
-/** 30 whole Monday-to-Sunday weeks, with nothing left over. */
-export const MISSION_WEEKS = Math.ceil(MISSION_DAYS / 7); // 30
-/** $1,430 a day — $10,010 a week — every day, for the whole run. */
-export const MISSION_DAILY_CENTS = 143_000;
-/** $300,300 — 210 days at $1,430. The one figure in here that never changes. */
-export const MISSION_TARGET_CENTS = MISSION_DAYS * MISSION_DAILY_CENTS;
 
 export type WeekState = 'met' | 'missed' | 'current' | 'future';
 export type DayState = 'earned' | 'blank' | 'unlogged' | 'future';
 
 export interface MissionDayCell {
   date: string;
-  /** 1-based day within its week, 1 = Monday. */
+  /** 1-based day within its week. 1 is whatever weekday the sprint began on. */
   dayOfWeek: number;
   amountCents: number | null;
   state: DayState;
 }
 
 export interface MissionWeek {
-  /** 1-based, 1..30. */
+  /** 1-based within the sprint. */
   index: number;
-  startDate: string; // Monday
-  endDate: string; // Sunday
-  /** Days in this week. Seven for every week, given the window divides evenly. */
+  startDate: string;
+  endDate: string;
+  /** Days in this week. Seven, except a last week clipped by the estimate. */
   dayCount: number;
   /**
-   * What this week needed, set when the week began: everything still owed at
-   * that moment, divided by the weeks then left. Fixed once the week starts.
+   * What this week needed, set when the week began: everything the sprint still
+   * owed at that moment, spread over the days the estimate had left.
    */
   goalCents: number;
   earnedCents: number;
@@ -75,14 +63,13 @@ export interface MissionWeek {
   /** earnedCents / goalCents. Uncapped, and null for a goal of zero. */
   progress: number | null;
   /**
-   * The daily rate this week was set at: the goal divided by its own day count,
-   * fixed when the week opened.
+   * The daily rate this week was set at: the goal over its own day count, fixed
+   * when the week opened.
    *
    * Deliberately NOT "what is left over the days that remain". A rate that
-   * recalculates every day is a moving target — bank a good Monday and
-   * Sunday's number drops, miss a day and it climbs, and the figure you were
-   * given on Monday is never the one you are judged against. The week already
-   * recalibrates against the long game; the days inside it should not.
+   * recalculates every day is a moving target — bank a good first day and the
+   * last day's number drops, miss a day and it climbs, and the figure you were
+   * given at the start is never the one you are judged against.
    */
   perDayCents: number;
   state: WeekState;
@@ -90,62 +77,32 @@ export interface MissionWeek {
 }
 
 export interface WeekView extends MissionWeek {
-  /** Days of this week gone, including today. 1 on the Monday, 7 on the Sunday. */
+  /** Days of this week gone, including today. */
   daysElapsed: number;
   /** Days of this week still to come, including today. */
   daysLeft: number;
   /**
    * How much of the week has gone. 0..1.
    *
-   * Today counts as elapsed, so this reads 1/7 on the Monday and 7/7 on the
-   * Sunday — the week is never "0% gone" while you are standing in it.
+   * Today counts as elapsed, so this reads 1/7 on the first day and 7/7 on the
+   * last — the week is never "0% gone" while you are standing in it.
    */
   timeProgress: number;
 }
 
-export interface MissionStatus {
-  startDate: string;
-  endDate: string;
-  targetCents: number;
+export interface WeekSummary {
   totalWeeks: number;
-
-  started: boolean;
-  finished: boolean;
-
-  /** Days of the whole window gone, including today. Capped at 210. */
-  daysElapsed: number;
-  /**
-   * How much of the 210 days has gone. 0..1.
-   *
-   * The counterpart to `progress`, and the gap between them is the pace read:
-   * time only ever moves forward, money can stall. Money bar ahead of the time
-   * bar means you are running ahead of the clock.
-   */
-  timeProgress: number;
-
-  /** Everything earned inside the window so far. */
-  earnedCents: number;
-  /** Still to earn to reach $300,300. Zero once it is passed. */
-  remainingCents: number;
-  /** earnedCents / targetCents. Uncapped: beating it is possible. */
-  progress: number;
-  achieved: boolean;
-
-  /** 1-based index of the week today falls in. Null outside the window. */
+  /** 1-based index of the week today falls in. Null outside the sprint. */
   currentWeekIndex: number | null;
+  /** Weeks that have closed. */
   weeksElapsed: number;
   /** Weeks with any day still to come, including the current one. */
   weeksRemaining: number;
-  /** Completed weeks that hit their goal. */
   weeksMet: number;
   weeksMissed: number;
-
-  /** The pace the whole thing opened at: $1,430 x 7 = $10,010 a week. */
+  /** The rate the sprint was estimated at: $269 x 7 = $1,883 a week. */
   openingWeeklyCents: number;
-  /**
-   * What every remaining week must now average. The single most useful number
-   * on the page — it says what the situation is, not what it was.
-   */
+  /** What every week from here on must average. Null once there are none. */
   weeklyPaceCents: number | null;
 }
 
@@ -153,55 +110,76 @@ export interface MissionStatus {
  * This week's share of what is left, by day.
  *
  * Rounded up — a goal that rounds down can be met while leaving you fractionally
- * short, and 30 of those add up.
+ * short, and a sprint's worth of those add up.
  */
 function share(remainingCents: number, daysLeft: number, daysThisWeek: number): number {
-  if (daysLeft <= 0) return 0;
+  if (remainingCents <= 0) return 0;
+  // Past the estimate there is nothing to spread over. Ask for the standard
+  // rate, or the remainder if that is smaller.
+  if (daysLeft <= 0) return Math.min(remainingCents, SPRINT_DAILY_CENTS * daysThisWeek);
   return Math.max(0, Math.ceil((remainingCents / daysLeft) * daysThisWeek));
 }
 
 /**
- * All 30 weeks, each with the goal it was given and what it earned.
+ * The weeks of the sprint being run, each with the goal it was given.
  *
  * Built in order because each week's goal depends on every week before it.
- * That sequential dependency is the recalibration: week N is handed whatever
+ * That sequential dependency IS the recalibration: week N is handed whatever
  * the first N-1 weeks failed to earn, spread over the days that remain.
+ *
+ * The window runs to the estimate, or to today if the sprint has overrun it —
+ * an overrunning sprint still needs weeks to live in.
  */
-export function missionWeeks(days: MissionDay[], today: string): MissionWeek[] {
-  const byDate = new Map(days.map((d) => [d.date, d.amountCents]));
-  const weeks: MissionWeek[] = [];
+export function missionWeeks(
+  days: MissionDay[],
+  today: string,
+  sprint: LiveSprint | null,
+): MissionWeek[] {
+  if (!sprint) return [];
 
+  const byDate = new Map(days.map((d) => [d.date, d.amountCents]));
+
+  // How far out the weeks need to reach: the estimate, or today if the sprint
+  // has run past it.
+  const horizon = sprint.completed
+    ?? (today > sprint.estimatedEnd ? today : sprint.estimatedEnd);
+  const weekCount = Math.ceil(Math.max(1, daysBetween(sprint.started, horizon) + 1) / 7);
+
+  // Overrun weeks run their full seven days. Clipping the last week to today
+  // instead made "this week" a one-day week that grew by a day each morning —
+  // a goal of one day's rate, a chart with a single bar, and no week to
+  // compare against the ones before it. Only a LOGGED FINISH clips a week,
+  // because there the sprint genuinely stopped mid-week.
+  //
+  // The estimate is always a whole number of weeks, so this changes nothing
+  // for a sprint still inside it.
+  const lastDay = sprint.completed ?? addDays(sprint.started, weekCount * 7 - 1);
+
+  const weeks: MissionWeek[] = [];
   let earnedBefore = 0;
   let daysBefore = 0;
-  // Frozen at the first week that has not started yet. Every future week is
+  // Frozen at the first week that has not started yet, so every future week is
   // projected from the SAME position — today's — rather than from a running
-  // total that keeps consuming days while earning nothing. Without this, a
-  // week two years out would be handed the entire outstanding balance and
-  // shown a goal of six figures, which is arithmetic, not information.
+  // total that keeps consuming days while earning nothing. Without it, the last
+  // week of a sprint would be handed the entire outstanding balance.
   let projection: { remainingCents: number; daysLeft: number } | null = null;
 
-  for (let i = 0; i < MISSION_WEEKS; i++) {
-    const startDate = addDays(MISSION_START, i * 7);
-    // Clipped to the mission end. The window divides evenly, so this never
-    // fires — it stays as a guard against a future change of dates silently
-    // running a week past the finish.
+  for (let i = 0; i < weekCount; i++) {
+    const startDate = addDays(sprint.started, i * 7);
     const rawEnd = addDays(startDate, 6);
-    const endDate = rawEnd > MISSION_END ? MISSION_END : rawEnd;
+    const endDate = rawEnd > lastDay ? lastDay : rawEnd;
     const dayCount = daysBetween(startDate, endDate) + 1;
 
-    // Set from the position at the START of this week, so a goal never shifts
-    // under you mid-week. Today's earnings change next week's number, not this
-    // week's — you always know what you are chasing.
     if (startDate > today && projection === null) {
       projection = {
-        remainingCents: MISSION_TARGET_CENTS - earnedBefore,
-        daysLeft: MISSION_DAYS - daysBefore,
+        remainingCents: sprint.targetCents - earnedBefore,
+        daysLeft: sprint.estimatedDays - daysBefore,
       };
     }
 
     const goalCents = projection
       ? share(projection.remainingCents, projection.daysLeft, dayCount)
-      : share(MISSION_TARGET_CENTS - earnedBefore, MISSION_DAYS - daysBefore, dayCount);
+      : share(sprint.targetCents - earnedBefore, sprint.estimatedDays - daysBefore, dayCount);
 
     const cells: MissionDayCell[] = [];
     let earnedCents = 0;
@@ -250,53 +228,35 @@ export function currentWeek(weeks: MissionWeek[], today: string): WeekView | nul
   const week = weeks.find((w) => today >= w.startDate && today <= w.endDate);
   if (!week) return null;
 
-  const daysLeft = daysBetween(today, week.endDate) + 1;
   const daysElapsed = daysBetween(week.startDate, today) + 1;
   return {
     ...week,
     daysElapsed,
-    daysLeft,
+    daysLeft: daysBetween(today, week.endDate) + 1,
     timeProgress: daysElapsed / week.dayCount,
   };
 }
 
-export function missionStatus(weeks: MissionWeek[], today: string): MissionStatus {
-  const started = today >= MISSION_START;
-  const finished = today > MISSION_END;
-
-  const earnedCents = weeks.reduce((a, w) => a + w.earnedCents, 0);
-  const remainingCents = Math.max(0, MISSION_TARGET_CENTS - earnedCents);
-
+export function weekSummary(
+  weeks: MissionWeek[],
+  sprint: LiveSprint | null,
+): WeekSummary {
   const current = weeks.find((w) => w.state === 'current') ?? null;
-  const daysElapsed = !started
-    ? 0
-    : Math.min(MISSION_DAYS, daysBetween(MISSION_START, today) + 1);
   const weeksElapsed = weeks.filter((w) => w.state === 'met' || w.state === 'missed').length;
-  const weeksRemaining = MISSION_WEEKS - weeksElapsed;
+  const weeksRemaining = weeks.length - weeksElapsed;
 
   return {
-    startDate: MISSION_START,
-    endDate: MISSION_END,
-    targetCents: MISSION_TARGET_CENTS,
-    totalWeeks: MISSION_WEEKS,
-    started,
-    finished,
-    daysElapsed,
-    timeProgress: daysElapsed / MISSION_DAYS,
-    earnedCents,
-    remainingCents,
-    progress: earnedCents / MISSION_TARGET_CENTS,
-    achieved: earnedCents >= MISSION_TARGET_CENTS,
+    totalWeeks: weeks.length,
     currentWeekIndex: current ? current.index : null,
     weeksElapsed,
     weeksRemaining,
     weeksMet: weeks.filter((w) => w.state === 'met').length,
     weeksMissed: weeks.filter((w) => w.state === 'missed').length,
-    openingWeeklyCents: MISSION_DAILY_CENTS * 7,
-    // Includes the week in progress, so this is "from here on", not "after
-    // this week" — which is what you can still act on.
-    weeklyPaceCents: weeksRemaining > 0
-      ? share(remainingCents, MISSION_DAYS - daysElapsed + 1, 7)
+    openingWeeklyCents: SPRINT_DAILY_CENTS * 7,
+    // Includes the week in progress, so this is "from here on", not "after this
+    // week" — which is what can still be acted on.
+    weeklyPaceCents: sprint && weeksRemaining > 0 && sprint.remainingCents > 0
+      ? share(sprint.remainingCents, sprint.daysLeft ?? 0, 7)
       : null,
   };
 }

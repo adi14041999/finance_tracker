@@ -12,10 +12,11 @@
 import type {
   Account, AccountClass, Balance, Budget, Category,
   Config, EplFixture, EventMonth, MarginReading, MissionDay, Position, PremiumMonth,
-  Problem, Roll, SheetData, Transaction,
+  Problem, Roll, SheetData, Sprint, Transaction,
 } from './types';
 import { toCents } from './money';
-import { monthOf, normaliseDate, normaliseMonth } from './dates';
+import { addDays, monthOf, normaliseDate, normaliseMonth } from './dates';
+import { SPRINT_DAILY_CENTS, SPRINT_WEEK_CENTS } from './derive/sprints';
 
 export type RawRows = unknown[][];
 
@@ -32,6 +33,7 @@ export interface RawSheet {
   events: RawRows;
   margin: RawRows;
   mission: RawRows;
+  sprints: RawRows;
   epl: RawRows;
   config: RawRows;
 }
@@ -715,6 +717,112 @@ function parseMission(rows: RawRows, problems: Problem[]): MissionDay[] {
 }
 
 /**
+ * The sprints: one row per medium target, in the order they are run.
+ *
+ * Kept in SHEET ORDER like the fixture list, because that order is the plan.
+ * A row with no name is a spare row at the bottom and is skipped silently; a
+ * row with a name but no target or start date is a real mistake and is
+ * reported, because a sprint without either cannot be measured.
+ *
+ * `completed` is optional and stays null when blank — that is what marks the
+ * sprint still running. A completed date earlier than the start date is
+ * refused rather than quietly producing a negative duration.
+ *
+ * `started` is optional. Blank means "the day after the last one finished",
+ * which is derived downstream — the sheet should not have to carry a date that
+ * is implied by the row above it. Only the first sprint genuinely needs one.
+ *
+ * A target below one week at the standing rate is refused too. The estimate is
+ * cut to whole weeks, so anything under a single week would floor to zero weeks
+ * and have to be bumped back up to one — giving a window that asks for less per
+ * day than the rate the whole thing is built on. Rather than let that pass
+ * quietly, it is named as the mistake it is.
+ */
+function parseSprints(rows: RawRows, problems: Problem[]): Sprint[] {
+  if (rows.length === 0) return [];
+  const r = new Reader('sprints', rows[0]);
+  // 'started' is not required: blank chains it to the sprint above.
+  r.missingColumns(['name', 'target'], problems);
+
+  const out: Sprint[] = [];
+  // The finish date of the row above, so a typed start can be checked against
+  // the chain rather than taken on trust.
+  let prevCompleted: string | null = null;
+  let prevName = '';
+  // Two unfinished rows with the same name is almost always an edit that went
+  // to a new row instead of the old one. The app runs the FIRST unfinished
+  // sprint, so the stale row keeps winning and every edit below it looks like
+  // it did nothing. Silent is the worst possible behaviour here.
+  const openByName = new Map<string, number>();
+
+  for (const { row, n } of body(rows)) {
+    const name = r.text(row, 'name');
+    if (!name) continue; // a spare row at the bottom of the list
+
+    const targetCents = toCents(r.raw(row, 'target'));
+    if (targetCents === null) {
+      r.problem(n, 'target', `${name}: couldn't read "${r.text(row, 'target')}" as an amount. Row skipped.`);
+      continue;
+    }
+    if (targetCents <= 0) {
+      r.problem(n, 'target', `${name}: a target of ${r.text(row, 'target')} gives nothing to aim at. Row skipped.`);
+      continue;
+    }
+    if (targetCents < SPRINT_WEEK_CENTS) {
+      // Built from the constants rather than written out, so changing the rate
+      // cannot leave this message quoting the old one.
+      r.problem(n, 'target', `${name}: $${(targetCents / 100).toLocaleString()} is less than one week at $${(SPRINT_DAILY_CENTS / 100).toLocaleString()} a day ($${(SPRINT_WEEK_CENTS / 100).toLocaleString()}), so it can't be measured in whole weeks. Row skipped.`);
+      continue;
+    }
+
+    const rawStart = r.raw(row, 'started');
+    const blankStart = String(rawStart ?? '').trim() === '';
+    const started = blankStart ? null : (normaliseDate(rawStart) ?? americanDate(rawStart));
+
+    if (!blankStart && !started) {
+      r.problem(n, 'started', `${name}: couldn't read "${r.text(row, 'started')}" as a date. Taken as blank, so it starts the day after the sprint above it finishes.`, 'warning');
+    }
+
+    const rawDone = r.raw(row, 'completed');
+    const blank = String(rawDone ?? '').trim() === '';
+    const completed = blank ? null : (normaliseDate(rawDone) ?? americanDate(rawDone));
+
+    if (!blank && !completed) {
+      r.problem(n, 'completed', `${name}: couldn't read "${r.text(row, 'completed')}" as a date. Treated as still running.`, 'warning');
+    }
+    if (completed && started && completed < started) {
+      r.problem(n, 'completed', `${name}: finished ${completed}, before it started on ${started}. Treated as still running.`);
+      out.push({ index: out.length + 1, name, targetCents, started, completed: null, row: n });
+      continue;
+    }
+
+    if (started && prevCompleted) {
+      const expected = addDays(prevCompleted, 1);
+      if (started !== expected) {
+        const gap = started > expected;
+        r.problem(n, 'started', `${name}: starts ${started}, but ${prevName} finished ${prevCompleted}, so this should start ${expected}. ${gap ? 'The days in between count toward nothing.' : 'It overlaps the sprint above, so those days are counted twice.'} Leave the cell blank to chain it automatically.`, 'warning');
+      }
+    }
+    prevCompleted = completed ?? null;
+    prevName = name;
+
+    if (!completed) {
+      const first = openByName.get(name.toLowerCase());
+      if (first !== undefined) {
+        r.problem(n, 'name', `${name}: there's already an unfinished sprint called this on row ${first}. Only row ${first} is being run — edits here do nothing until that row is finished or removed.`);
+      } else {
+        openByName.set(name.toLowerCase(), n);
+      }
+    }
+
+    out.push({ index: out.length + 1, name, targetCents, started, completed: completed ?? null, row: n });
+  }
+
+  problems.push(...r.problems);
+  return out;
+}
+
+/**
  * The Premier League fixture list: one row per game, 380 of them.
  *
  * Rows are kept in SHEET ORDER, not sorted — the order they are written in is
@@ -799,6 +907,7 @@ export function parseSheet(
   const events = parseEvents(raw.events, problems);
   const margin = parseMargin(raw.margin, problems);
   const mission = parseMission(raw.mission, problems);
+  const sprints = parseSprints(raw.sprints, problems);
   const epl = parseEpl(raw.epl, problems);
   const config = parseConfig(raw.config);
 
@@ -811,7 +920,7 @@ export function parseSheet(
 
   return {
     accounts, categories, transactions, balances, budgets, positions,
-    premiums, premiumsAnoosha, rolls, events, margin, mission, epl, config,
+    premiums, premiumsAnoosha, rolls, events, margin, mission, sprints, epl, config,
     problems, ...meta,
   };
 }

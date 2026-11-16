@@ -12,6 +12,7 @@ export default async function RobinhoodPage() {
       margin={data.margin}
       events={data.events}
       mission={data.mission}
+      sprints={data.sprints}
       epl={data.epl}
       today={today()}
       sample={dataMode() === 'sample'}

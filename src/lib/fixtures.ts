@@ -261,6 +261,9 @@ export function sampleSheet(today: string): RawSheet {
     mission: [
       ['date', 'amount'],
     ],
+    sprints: [
+      ['name', 'target', 'started', 'completed'],
+    ],
     epl: [
       ['fixture', 'date', 'amount'],
     ],

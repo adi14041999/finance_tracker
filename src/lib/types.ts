@@ -173,7 +173,7 @@ export interface MarginReading {
 
 /**
  * One day of the mission: earn at least $464 on event contracts, on at least
- * 512 days, starting 7 August 2026.
+ * a fixed number of days.
  *
  * Logged daily and separately from the monthly `events` ledger, because the
  * promise is made per day. A month that clears its total while three days fell
@@ -204,6 +204,37 @@ export interface EplFixture {
   /** When it is played. Optional — the season works without it. */
   date: string | null; // YYYY-MM-DD
   amountCents: number | null;
+  row: number;
+}
+
+/**
+ * One medium target — a sprint.
+ *
+ * Sprints run in sheet order and each one counts from ZERO: its earnings are
+ * the mission days inside its own window, not a slice of some grand total.
+ * That is what makes a sprint feel like a sprint rather than a milepost.
+ *
+ * `completed` is typed in by hand, never inferred. Earnings can cross the
+ * target without the sprint being finished — the number is not always the
+ * whole of what a target is about — so crossing it is reported, and closing it
+ * stays a decision.
+ */
+export interface Sprint {
+  /** 1-based position in the sheet, which is the order sprints are run in. */
+  index: number;
+  name: string;
+  targetCents: number;
+  /**
+   * The first day that counts toward it, or null to chain it.
+   *
+   * Sprints run back to back: one starts the day after the one before it
+   * finished. Leaving this blank derives that date, so the only start you ever
+   * have to type is the very first. A date typed here wins, and is checked
+   * against the chain.
+   */
+  started: string | null; // YYYY-MM-DD
+  /** Blank until you log it. Null means still running. */
+  completed: string | null; // YYYY-MM-DD
   row: number;
 }
 
@@ -239,6 +270,7 @@ export interface SheetData {
   events: EventMonth[];
   margin: MarginReading[];
   mission: MissionDay[];
+  sprints: Sprint[];
   epl: EplFixture[];
   config: Config;
   problems: Problem[];

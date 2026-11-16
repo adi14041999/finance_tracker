@@ -7,7 +7,7 @@ import { formatMoney, formatMoneyCompact } from '@/lib/money';
 import { formatMonth } from '@/lib/dates';
 import { RANGES, rangeStart, type Range } from '@/lib/range';
 import MissionSection from './MissionSection';
-import type { EplFixture, MissionDay } from '@/lib/types';
+import type { EplFixture, MissionDay, Sprint } from '@/lib/types';
 
 /**
  * Gains blue, losses orange — the same validated diverging pair used elsewhere.
@@ -100,10 +100,11 @@ function MonthlyBars({ rows }: { rows: EventRow[] }) {
 }
 
 export default function EventsTab({
-  events, mission, epl, today,
+  events, mission, sprints, epl, today,
 }: {
   events: EventMonth[];
   mission: MissionDay[];
+  sprints: Sprint[];
   epl: EplFixture[];
   today: string;
 }) {
@@ -133,7 +134,7 @@ export default function EventsTab({
           month&apos;s realized total beside it.
         </p>
         </div>
-        <MissionSection mission={mission} epl={epl} today={today} />
+        <MissionSection mission={mission} sprints={sprints} epl={epl} today={today} />
       </div>
     );
   }
@@ -248,7 +249,7 @@ export default function EventsTab({
         </div>
       </section>
 
-      <MissionSection mission={mission} epl={epl} today={today} />
+      <MissionSection mission={mission} sprints={sprints} epl={epl} today={today} />
     </div>
   );
 }
